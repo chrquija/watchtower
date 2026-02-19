@@ -14,9 +14,54 @@ st.set_page_config(
 )
 
 # Constants
-# Use the live dataset hosted on GitHub (raw URL)
-DATA_URL = "https://raw.githubusercontent.com/chrquija/BrownBag_Dashboard/refs/heads/main/data/W_SAN_RAFAEL_RD_and_TRAMWAY_RD.xlsx"
-INTERSECTION_NAME = "N PALM CANYON DR & W SAN RAFAEL RD & TRAMWAY RD"
+# Registry of available intersections
+INTERSECTION_REGISTRY = [
+    {
+        "name": "N PALM CANYON DR & W SAN RAFAEL RD & TRAMWAY RD",
+        "lat": 33.85832,
+        "lon": -116.55739,
+        "url": "https://raw.githubusercontent.com/chrquija/BrownBag_Dashboard/main/data/W_SAN_RAFAEL_RD_and_TRAMWAY_RD.xlsx"
+    },
+    {
+        "name": "Fred Waring Drive and Warner Trail",
+        "lat": 33.72898,
+        "lon": -116.31262,
+        "url": "https://raw.githubusercontent.com/chrquija/BrownBag_Dashboard/main/data/1_Fredwaringdrive_and_WarnerTrail.xlsx"
+    },
+    {
+        "name": "Fred Waring Drive and Entrada Las brisas",
+        "lat": 33.72898,
+        "lon": -116.30824,
+        "url": "https://raw.githubusercontent.com/chrquija/BrownBag_Dashboard/main/data/2-Fredwaringdrive_and_EntradaLasBrisas.xlsx"
+    },
+    {
+        "name": "Washington Street and Fred Waring Drive",
+        "lat": 33.72899,
+        "lon": -116.303895,
+        "url": "https://raw.githubusercontent.com/chrquija/BrownBag_Dashboard/main/data/3_WashingtonSt_and_FredWaringDrive.xlsx"
+    },
+    {
+        "name": "Washington Street and Via Servilla",
+        "lat": 33.72486,
+        "lon": -116.3015,
+        "url": "https://raw.githubusercontent.com/chrquija/BrownBag_Dashboard/main/data/4_WashingtonSt_ViaServilla.xlsx"
+    },
+    {
+        "name": "Washington Street and Miles Avenue",
+        "lat": 33.72177,
+        "lon": -116.29775,
+        "url": "https://raw.githubusercontent.com/chrquija/BrownBag_Dashboard/main/data/5_WashingtonSt_and_MilesAvenue.xlsx"
+    },
+    {
+        "name": "Miles Avenue and Warner Trail",
+        "lat": 33.72258,
+        "lon": -116.312625,
+        "url": "https://raw.githubusercontent.com/chrquija/BrownBag_Dashboard/main/data/6_MilesAvenue_and_WarnerTrail.xlsx"
+    }
+]
+
+# Default intersection name
+DEFAULT_INTERSECTION_NAME = "N PALM CANYON DR & W SAN RAFAEL RD & TRAMWAY RD"
 
 
 # --- Data Loading Functions ---
@@ -82,15 +127,30 @@ def load_data(source: str):
 # --- Main Application ---
 
 def main():
+    # 1. Sidebar: Settings section
+    st.sidebar.markdown("## Settings")
+    selected_name = st.sidebar.selectbox(
+        "Intersection",
+        options=[i["name"] for i in INTERSECTION_REGISTRY],
+        index=[i["name"] for i in INTERSECTION_REGISTRY].index(DEFAULT_INTERSECTION_NAME)
+    )
+
+    # Get details for the selected intersection
+    selected_intersection = next(i for i in INTERSECTION_REGISTRY if i["name"] == selected_name)
+    DATA_URL = selected_intersection["url"]
+    INTERSECTION_NAME = selected_intersection["name"]
+    LATITUDE = selected_intersection["lat"]
+    LONGITUDE = selected_intersection["lon"]
+
     # Custom header + sidebar metadata
     corridor = "North Palm Canyon Drive"
-    intersection = "N PALM CANYON DR & W SAN RAFAEL RD & TRAMWAY RD"
+    intersection = INTERSECTION_NAME
     primary_street = "N PALM CANYON"
     secondary_street = "W SAN RAFAEL RD"
     tertiary_street = "TRAMWAY RD"
     city = "City of Palm Springs"
     date_range = "10-01-2025 to 11-30-2025"
-    coordinates = "33.85832, -116.55739"
+    coordinates = f"{LATITUDE}, {LONGITUDE}"
     Data_Source = "ITERIS CLEARGUIDE"
     # Sidebar: move static metadata out of the main header to reduce crowding
     st.sidebar.markdown("## Location Info")
@@ -199,8 +259,8 @@ def main():
     # Map stays pinned in the right rail
     with right_col:
         render_map(
-            latitude=33.85832,
-            longitude=-116.55739,
+            latitude=LATITUDE,
+            longitude=LONGITUDE,
             height=900,  # longer map
             zoom=13,
             label=intersection,
