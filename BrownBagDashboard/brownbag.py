@@ -17,43 +17,43 @@ st.set_page_config(
 # Registry of available intersections
 INTERSECTION_REGISTRY = [
     {
-        "name": "N PALM CANYON DR & W SAN RAFAEL RD & TRAMWAY RD",
+        "label": "N PALM CANYON DR & W SAN RAFAEL RD & TRAMWAY RD",
         "lat": 33.85832,
         "lon": -116.55739,
         "url": "https://raw.githubusercontent.com/chrquija/BrownBag_Dashboard/main/data/W_SAN_RAFAEL_RD_and_TRAMWAY_RD.xlsx"
     },
     {
-        "name": "Fred Waring Drive and Warner Trail",
+        "label": "Fred Waring Drive and Warner Trail",
         "lat": 33.72898,
         "lon": -116.31262,
         "url": "https://raw.githubusercontent.com/chrquija/BrownBag_Dashboard/main/data/1_Fredwaringdrive_and_WarnerTrail.xlsx"
     },
     {
-        "name": "Fred Waring Drive and Entrada Las brisas",
+        "label": "Fred Waring Drive and Entrada Las brisas",
         "lat": 33.72898,
         "lon": -116.30824,
         "url": "https://raw.githubusercontent.com/chrquija/BrownBag_Dashboard/main/data/2-Fredwaringdrive_and_EntradaLasBrisas.xlsx"
     },
     {
-        "name": "Washington Street and Fred Waring Drive",
+        "label": "Washington Street and Fred Waring Drive",
         "lat": 33.72899,
         "lon": -116.303895,
         "url": "https://raw.githubusercontent.com/chrquija/BrownBag_Dashboard/main/data/3_WashingtonSt_and_FredWaringDrive.xlsx"
     },
     {
-        "name": "Washington Street and Via Servilla",
+        "label": "Washington Street and Via Servilla",
         "lat": 33.72486,
         "lon": -116.3015,
         "url": "https://raw.githubusercontent.com/chrquija/BrownBag_Dashboard/main/data/4_WashingtonSt_ViaServilla.xlsx"
     },
     {
-        "name": "Washington Street and Miles Avenue",
+        "label": "Washington Street and Miles Avenue",
         "lat": 33.72177,
         "lon": -116.29775,
         "url": "https://raw.githubusercontent.com/chrquija/BrownBag_Dashboard/main/data/5_WashingtonSt_and_MilesAvenue.xlsx"
     },
     {
-        "name": "Miles Avenue and Warner Trail",
+        "label": "Miles Avenue and Warner Trail",
         "lat": 33.72258,
         "lon": -116.312625,
         "url": "https://raw.githubusercontent.com/chrquija/BrownBag_Dashboard/main/data/6_MilesAvenue_and_WarnerTrail.xlsx"
@@ -124,6 +124,19 @@ def load_data(source: str):
         return None
 
 
+def get_meta_value(df_meta, key, fallback="N/A"):
+    """Helper to look up values from the two-column Metadata sheet by key name."""
+    try:
+        col_keys = df_meta.columns[0]
+        col_vals = df_meta.columns[1]
+        match = df_meta[df_meta[col_keys].astype(str).str.strip() == key]
+        if not match.empty:
+            return str(match.iloc[0][col_vals]).strip()
+    except Exception:
+        pass
+    return fallback
+
+
 # --- Main Application ---
 
 def main():
@@ -131,28 +144,42 @@ def main():
     st.sidebar.markdown("## Settings")
     selected_name = st.sidebar.selectbox(
         "Intersection",
-        options=[i["name"] for i in INTERSECTION_REGISTRY],
-        index=[i["name"] for i in INTERSECTION_REGISTRY].index(DEFAULT_INTERSECTION_NAME)
+        options=[i["label"] for i in INTERSECTION_REGISTRY],
+        index=[i["label"] for i in INTERSECTION_REGISTRY].index(DEFAULT_INTERSECTION_NAME)
     )
 
     # Get details for the selected intersection
-    selected_intersection = next(i for i in INTERSECTION_REGISTRY if i["name"] == selected_name)
-    DATA_URL = selected_intersection["url"]
-    INTERSECTION_NAME = selected_intersection["name"]
-    LATITUDE = selected_intersection["lat"]
-    LONGITUDE = selected_intersection["lon"]
+    selected = next(i for i in INTERSECTION_REGISTRY if i["label"] == selected_name)
+    DATA_URL = selected["url"]
 
-    # Custom header + sidebar metadata
-    corridor = "North Palm Canyon Drive"
-    intersection = INTERSECTION_NAME
-    primary_street = "N PALM CANYON"
-    secondary_street = "W SAN RAFAEL RD"
-    tertiary_street = "TRAMWAY RD"
-    city = "City of Palm Springs"
-    date_range = "10-01-2025 to 11-30-2025"
-    coordinates = f"{LATITUDE}, {LONGITUDE}"
-    Data_Source = "ITERIS CLEARGUIDE"
-    # Sidebar: move static metadata out of the main header to reduce crowding
+    # Load data early to use metadata for labels
+    data = load_data(DATA_URL)
+    if data is None:
+        st.stop()
+    df_meta, df_int, df_app, df_mov = data
+
+    # 2. Extract metadata dynamically
+    primary_street = get_meta_value(df_meta, "Primary Street")
+    secondary_street = get_meta_value(df_meta, "Secondary Street")
+    tertiary_street = get_meta_value(df_meta, "Tertiary Street", "N/A")
+    city = get_meta_value(df_meta, "City")
+    if city == "N/A":
+        # derive it from the Intersection field if missing
+        city = get_meta_value(df_meta, "Intersection", "N/A")
+
+    start_date = get_meta_value(df_meta, "Start Date")
+    end_date = get_meta_value(df_meta, "End Date")
+    date_range = f"{start_date} to {end_date}"
+
+    intersection = selected["label"]
+    coordinates = f"{selected['lat']}, {selected['lon']}"
+    Data_Source = get_meta_value(df_meta, "Data Source", "ITERIS CLEARGUIDE")
+
+    corridor = get_meta_value(df_meta, "Corridor")
+    if corridor == "N/A":
+        corridor = selected["label"]
+
+    # Sidebar: move dynamic metadata out of the main header to reduce crowding
     st.sidebar.markdown("## Location Info")
     st.sidebar.markdown(
         f"""
@@ -259,8 +286,8 @@ def main():
     # Map stays pinned in the right rail
     with right_col:
         render_map(
-            latitude=LATITUDE,
-            longitude=LONGITUDE,
+            latitude=selected["lat"],
+            longitude=selected["lon"],
             height=900,  # longer map
             zoom=13,
             label=intersection,
@@ -268,15 +295,7 @@ def main():
 
     # All analytics content lives inside the left column
     with left_col:
-        # Attempt to load data (from live URL). If it fails, stop execution.
-        data = load_data(DATA_URL)
-
-        if data is None:
-            st.stop()
-        else:
-            df_meta, df_int, df_app, df_mov = data
-
-        st.caption(f"Data source: [ITERIS CLEARGUIDE]({DATA_URL})")
+        st.caption(f"Data source: [{Data_Source}]({DATA_URL})")
 
         # 1. High-level KPIs (Intersection Sheet)
         st.markdown("---")
