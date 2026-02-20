@@ -14,48 +14,68 @@ st.set_page_config(
 )
 
 # Constants
+DIRECTION_MAP = {
+    "N": "Northbound", "S": "Southbound", "E": "Eastbound", "W": "Westbound",
+    "NB": "Northbound", "SB": "Southbound", "EB": "Eastbound", "WB": "Westbound",
+    "NE": "Northeast", "NW": "Northwest", "SE": "Southeast", "SW": "Southwest"
+}
+
 # Registry of available intersections
 INTERSECTION_REGISTRY = [
     {
         "label": "N PALM CANYON DR & W SAN RAFAEL RD & TRAMWAY RD",
         "lat": 33.85832,
         "lon": -116.55739,
+        "city": "City of Palm Springs, California",
+        "corridor": "North Palm Canyon Drive",
         "url": "https://raw.githubusercontent.com/chrquija/BrownBag_Dashboard/main/data/W_SAN_RAFAEL_RD_and_TRAMWAY_RD.xlsx"
     },
     {
         "label": "Fred Waring Drive and Warner Trail",
         "lat": 33.72898,
         "lon": -116.31262,
+        "city": "City of Indian Wells, California",
+        "corridor": "Fred Waring Drive",
         "url": "https://raw.githubusercontent.com/chrquija/BrownBag_Dashboard/main/data/1_Fredwaringdrive_and_WarnerTrail.xlsx"
     },
     {
-        "label": "Fred Waring Drive and Entrada Las brisas",
+        "label": "Fred Waring Drive and Entrada Las Brisas",
         "lat": 33.72898,
         "lon": -116.30824,
+        "city": "City of Indian Wells, California",
+        "corridor": "Fred Waring Drive",
         "url": "https://raw.githubusercontent.com/chrquija/BrownBag_Dashboard/main/data/2-Fredwaringdrive_and_EntradaLasBrisas.xlsx"
     },
     {
         "label": "Washington Street and Fred Waring Drive",
         "lat": 33.72899,
         "lon": -116.303895,
+        "city": "City of Indian Wells, California",
+        "corridor": "Washington Street",
         "url": "https://raw.githubusercontent.com/chrquija/BrownBag_Dashboard/main/data/3_WashingtonSt_and_FredWaringDrive.xlsx"
     },
     {
         "label": "Washington Street and Via Servilla",
         "lat": 33.72486,
         "lon": -116.3015,
+        "city": "City of Indian Wells, California",
+        "corridor": "Washington Street",
         "url": "https://raw.githubusercontent.com/chrquija/BrownBag_Dashboard/main/data/4_WashingtonSt_ViaServilla.xlsx"
     },
     {
         "label": "Washington Street and Miles Avenue",
         "lat": 33.72177,
         "lon": -116.29775,
+        "city": "City of Indian Wells, California",
+        "corridor": "Washington Street",
         "url": "https://raw.githubusercontent.com/chrquija/BrownBag_Dashboard/main/data/5_WashingtonSt_and_MilesAvenue.xlsx"
     },
     {
         "label": "Miles Avenue and Warner Trail",
         "lat": 33.72258,
         "lon": -116.312625,
+        "city": "City of Indian Wells, California",
+        "corridor": "Miles Avenue",
         "url": "https://raw.githubusercontent.com/chrquija/BrownBag_Dashboard/main/data/6_MilesAvenue_and_WarnerTrail.xlsx"
     }
 ]
@@ -137,6 +157,46 @@ def get_meta_value(df_meta, key, fallback="N/A"):
     return fallback
 
 
+@st.cache_data
+def load_all_intersections_data(registry):
+    """Load "By Approach" data from all intersections in the registry and combine into one DataFrame."""
+    all_app_dfs = []
+    
+    # Use a placeholder for warnings to avoid showing them multiple times in a loop
+    # or if we are in a non-UI thread (though st.warning is usually fine).
+    for entry in registry:
+        try:
+            # Load using the already cached load_data()
+            data = load_data(entry["url"])
+            if data is None:
+                continue
+            _, _, df_app, _ = data
+            
+            # Copy to avoid modifying the cached data
+            df_app = df_app.copy()
+            df_app["Intersection"] = entry["label"]
+            
+            # Map approach names using the global DIRECTION_MAP
+            df_app["Approach"] = df_app["Approach"].astype(str).str.strip()
+            df_app["Approach Full"] = df_app["Approach"].map(DIRECTION_MAP).fillna(df_app["Approach"])
+            
+            # Normalize percentage columns if they are on 0-100 scale
+            for col in ["Arrivals On Green Range 1", "Split Failures Range 1"]:
+                if col in df_app.columns:
+                    if df_app[col].max() > 1:
+                        df_app[col] = df_app[col] / 100.0
+            
+            all_app_dfs.append(df_app)
+        except Exception as e:
+            st.warning(f"Warning: Failed to load data for {entry['label']}. {e}")
+            
+    if not all_app_dfs:
+        return pd.DataFrame()
+        
+    df_all = pd.concat(all_app_dfs, ignore_index=True)
+    return df_all
+
+
 # --- Main Application ---
 
 def main():
@@ -162,10 +222,18 @@ def main():
     primary_street = get_meta_value(df_meta, "Primary Street")
     secondary_street = get_meta_value(df_meta, "Secondary Street")
     tertiary_street = get_meta_value(df_meta, "Tertiary Street", "N/A")
-    city = get_meta_value(df_meta, "City")
+    
+    city = selected.get("city", "N/A")
     if city == "N/A":
-        # derive it from the Intersection field if missing
-        city = get_meta_value(df_meta, "Intersection", "N/A")
+        # try "City" first, then fallback to Intersection
+        city = get_meta_value(df_meta, "City", "N/A")
+        if city == "N/A":
+            city = get_meta_value(df_meta, "Intersection", "N/A")
+    
+    # User requested to replace any variant of "City of Indio, California" 
+    # with "City of Indian Wells, California"
+    if city.lower().strip() in ["city of indio, california", "city of indio", "city of indio california"]:
+        city = "City of Indian Wells, California"
 
     start_date = get_meta_value(df_meta, "Start Date")
     end_date = get_meta_value(df_meta, "End Date")
@@ -175,7 +243,7 @@ def main():
     coordinates = f"{selected['lat']}, {selected['lon']}"
     Data_Source = get_meta_value(df_meta, "Data Source", "ITERIS CLEARGUIDE")
 
-    corridor = get_meta_value(df_meta, "Corridor")
+    corridor = selected["corridor"]
     if corridor == "N/A":
         corridor = selected["label"]
 
@@ -197,70 +265,87 @@ def main():
 
     # Optional toggles for showing details in the main area
     show_details_in_header = st.sidebar.checkbox("Show metadata in banner", value=False)
-    show_details_expander = st.sidebar.checkbox("Show details expander under banner", value=True)
 
     # Compact header (title + key subtitle only)
     header_html = f"""
-    <style>
-        .bbg-header {{
-            background: #1f4582;
-            color: #ffffff;
-            padding: 14px 20px; /* compact */
-            border-radius: 14px;
-            margin-bottom: 14px;
-        }}
-        .bbg-header h1 {{
-            margin: 0 0 2px 0;
-            font-size: 24px;
-            font-weight: 800;
-        }}
-        .bbg-header .subtitle {{
-            opacity: 0.95;
-            font-size: 14px;
-            margin: 0;
-        }}
-        .bbg-meta {{
-            display: grid;
-            grid-template-columns: repeat(2, minmax(200px, 1fr));
-            gap: 4px 16px;
-            font-size: 13px;
-            margin-top: 8px;
-        }}
-        .bbg-meta div span {{ opacity: 0.9; }}
-        @media (max-width: 800px) {{ .bbg-meta {{ grid-template-columns: 1fr; }} }}
-    </style>
-    <div class="bbg-header">
-        <h1>Intersection Performance Dashboard</h1>
-        <p class="subtitle">{intersection}</p>
-        {f'<div class="bbg-meta">\n'
-           f'  <div><strong>Corridor:</strong> <span>{corridor}</span></div>\n'
-           f'  <div><strong>City:</strong> <span>{city}</span></div>\n'
-           f'  <div><strong>Date Range:</strong> <span>{date_range}</span></div>\n'
-           f'  <div><strong>Coordinates:</strong> <span>{coordinates}</span></div>\n'
-           f'</div>' if show_details_in_header else ''}
-    </div>
-    """
+           <style>
+               .bbg-header {{
+                   background: #1f4582;
+                   color: #ffffff;
+                   padding: 16px 24px;
+                   border-radius: 14px;
+                   margin-bottom: 14px;
+               }}
+               .bbg-header .company {{
+                   font-size: 11px;
+                   font-weight: 600;
+                   letter-spacing: 2px;
+                   text-transform: uppercase;
+                   opacity: 0.75;
+                   margin: 0 0 4px 0;
+               }}
+               .bbg-header h1 {{
+                   margin: 0 0 4px 0;
+                   font-size: 26px;
+                   font-weight: 800;
+                   letter-spacing: 0.5px;
+               }}
+            .bbg-header .subtitle {{
+                display: inline-block;
+                margin: 6px 12px 0 0;
+                font-size: 14px;
+                font-weight: 500;
+                letter-spacing: 0.4px;
+                background: rgba(255,255,255,0.12);
+                border: 1px solid rgba(255,255,255,0.25);
+                border-radius: 20px;
+                padding: 4px 14px;
+                opacity: 1;
+            }}
+               .bbg-header .datasource {{
+                   display: inline-block;
+                   margin: 6px 0 0 0;
+                   font-size: 13px;
+                   font-weight: 400;
+                   opacity: 0.85;
+               }}
+               .bbg-header .datasource a {{
+                   color: #ffffff;
+                   text-decoration: underline;
+                   text-underline-offset: 2px;
+               }}
+               .bbg-header .datasource a:hover {{
+                   opacity: 1;
+                   color: #ffffff;
+               }}
+               .bbg-meta {{
+                   display: grid;
+                   grid-template-columns: repeat(2, minmax(200px, 1fr));
+                   gap: 4px 16px;
+                   font-size: 13px;
+                   margin-top: 10px;
+               }}
+               .bbg-meta div span {{ opacity: 0.9; }}
+               @media (max-width: 800px) {{ .bbg-meta {{ grid-template-columns: 1fr; }} }}
+           </style>
+           <div class="bbg-header">
+               <p class="company">Advantec Consulting Engineers</p>
+               <h1>INTERSECTION PERFORMANCE DASHBOARD</h1>
+               <p class="subtitle">📍 {intersection}</p>
+               <p class="datasource">Data Source: <a href="{DATA_URL}" target="_blank">{Data_Source}</a></p>
+               {f'<div class="bbg-meta">\n'
+                f'  <div><strong>Corridor:</strong> <span>{corridor}</span></div>\n'
+                f'  <div><strong>City:</strong> <span>{city}</span></div>\n'
+                f'  <div><strong>Date Range:</strong> <span>{date_range}</span></div>\n'
+                f'  <div><strong>Coordinates:</strong> <span>{coordinates}</span></div>\n'
+                f'</div>' if show_details_in_header else ''}
+           </div>
+           """
 
     st.markdown(header_html, unsafe_allow_html=True)
-
-    # Optional expander below the banner for quick access without opening sidebar
-    if show_details_expander:
-        with st.expander("Location details"):
-            st.markdown(
-                f"""
-    - **Corridor:** {corridor}
-    - **Intersection:** {intersection}
-    - **Primary:** {primary_street}
-    - **Secondary:** {secondary_street}
-    - **Tertiary:** {tertiary_street}
-    - **City:** {city}
-    - **Date Range:** {date_range}
-    - **Coordinates:** {coordinates}
-                    """
-            )
+    st.markdown("---")
 
     # Right rail layout: create persistent two-column canvas
-    st.markdown("---")
     
     # Make the right rail sticky and a bit thinner via CSS
     st.markdown(
@@ -291,15 +376,13 @@ def main():
             height=900,  # longer map
             zoom=13,
             label=intersection,
+            registry=INTERSECTION_REGISTRY,
         )
 
     # All analytics content lives inside the left column
     with left_col:
-        st.caption(f"Data source: [{Data_Source}]({DATA_URL})")
-
         # 1. High-level KPIs (Intersection Sheet)
-        st.markdown("---")
-        st.subheader("Advantec AI Overview")
+        st.subheader("High-Level KPIs")
 
         # Helper to format percentages safely (handles 0.78 vs 78)
         def format_percent(val):
@@ -330,16 +413,12 @@ def main():
 
         # 2. Approach Analysis (By Approach Sheet)
         st.markdown("---")
-        st.subheader("Performance by Approach")
+        st.subheader("Performance by Approach Visualizations")
 
-        # Map abbreviated directions to full names
-        direction_map = {
-            "NB": "Northbound", "SB": "Southbound", "EB": "Eastbound", "WB": "Westbound",
-            "NE": "Northeast", "NW": "Northwest", "SE": "Southeast", "SW": "Southwest"
-        }
-        # Create a copy to avoid SettingWithCopy warning on the cached dataframe
+        # Create cleaned and mapped approach names for df_app
         df_app_plot = df_app.copy()
-        df_app_plot["Approach Full"] = df_app_plot["Approach"].map(direction_map).fillna(df_app_plot["Approach"])
+        df_app_plot["Approach"] = df_app_plot["Approach"].astype(str).str.strip()
+        df_app_plot["Approach Full"] = df_app_plot["Approach"].map(DIRECTION_MAP).fillna(df_app_plot["Approach"])
 
         col_chart_1, col_chart_2 = st.columns(2)
 
@@ -352,14 +431,18 @@ def main():
                 text_auto='.1f',
                 color="Delay Range 1",
                 color_continuous_scale="RdYlGn_r",  # High delay = Red
-                labels={"Delay Range 1": "Control Delay (seconds)", "Approach Full": "Approach"}
+                labels={"Delay Range 1": "Average Delay (s)", "Approach Full": "Approach"},
+                hover_data={"Approach Full": True, "Delay Range 1": ":.1f"}
             )
             fig_delay.update_layout(
                 showlegend=False,
                 yaxis_title="Control Delay (seconds)"
             )
-            # Increase text size inside bars
-            fig_delay.update_traces(textfont_size=16)
+            # Improve Tooltips + Increase text size inside bars
+            fig_delay.update_traces(
+                textfont_size=16,
+                hovertemplate="<b>Approach:</b> %{x}<br><b>Average Delay:</b> %{y:.1f} seconds<extra></extra>"
+            )
 
             st.plotly_chart(fig_delay, use_container_width=True)
 
@@ -375,7 +458,8 @@ def main():
                 x=df_app_plot["Approach Full"],
                 y=df_app_plot[vol_col],
                 name="Volume",
-                marker_color='rgb(55, 83, 109)'
+                marker_color='rgb(55, 83, 109)',
+                hovertemplate="<b>Approach:</b> %{x}<br><b>Volume:</b> %{y:,} vehicles<extra></extra>"
             ))
 
             # Line for Split Failures
@@ -388,7 +472,8 @@ def main():
                 name="Split Failure %",
                 yaxis="y2",
                 mode="lines+markers",
-                line=dict(color='rgb(219, 64, 82)', width=3)
+                line=dict(color='rgb(219, 64, 82)', width=3),
+                hovertemplate="<b>Approach:</b> %{x}<br><b>Split Failure:</b> %{y:.1%}<extra></extra>"
             ))
 
             fig_combo.update_layout(
@@ -396,7 +481,7 @@ def main():
                 xaxis_title="Approach",
                 yaxis=dict(title="Volume"),
                 yaxis2=dict(title="Split Failures %", overlaying="y", side="right", tickformat=".1%"),
-                legend=dict(x=0, y=1.2, orientation="h")
+                legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
             )
             st.plotly_chart(fig_combo, use_container_width=True)
 
@@ -422,21 +507,19 @@ def main():
         with col_filter:
             st.write("**Filter Data**")
 
-            # Use full names for filter
-            # Get unique approaches from data
-            unique_apps = sorted(df_mov["Approach"].unique())
-            # Create display labels
-            app_labels = [direction_map.get(a, a) for a in unique_apps]
+            # Clean and map all approaches for filtering and display
+            df_mov_plot = df_mov.copy()
+            df_mov_plot["Approach"] = df_mov_plot["Approach"].astype(str).str.strip()
+            df_mov_plot["Approach Full"] = df_mov_plot["Approach"].map(DIRECTION_MAP).fillna(df_mov_plot["Approach"])
+
+            # Get unique mapped approach names for the filter
+            app_labels = sorted(list(df_mov_plot["Approach Full"].unique()))
 
             selected_labels = st.multiselect(
                 "Select Approach",
                 options=app_labels,
                 default=app_labels
             )
-
-            # Convert selected labels back to codes (e.g., "Northeast" -> "NE")
-            reverse_map = {v: k for k, v in direction_map.items()}
-            selected_codes = [reverse_map.get(l, l) for l in selected_labels]
 
             selected_metric_label = st.selectbox(
                 "Select Metric to Visualize",
@@ -445,10 +528,8 @@ def main():
             selected_metric_col = metric_map[selected_metric_label]
 
         with col_display:
-            filtered_df = df_mov[df_mov["Approach"].isin(selected_codes)].copy()
-
-            # Add full name column for plotting
-            filtered_df["Approach Full"] = filtered_df["Approach"].map(direction_map).fillna(filtered_df["Approach"])
+            # Filter by the mapped labels directly
+            filtered_df = df_mov_plot[df_mov_plot["Approach Full"].isin(selected_labels)].copy()
 
             # Handle Percentages (Divide by 100 if needed)
             # Apply to BOTH Split Failure AND Arrivals On Green
@@ -465,6 +546,17 @@ def main():
             else:
                 text_fmt = '.1%'
 
+            # Determine hover format
+            if "Delay" in selected_metric_label:
+                hover_fmt = ":.1f"
+                metric_unit = " seconds"
+            elif "Volume" in selected_metric_label:
+                hover_fmt = ":,"
+                metric_unit = " vehicles"
+            else:
+                hover_fmt = ":.1%"
+                metric_unit = ""
+
             fig_mov = px.bar(
                 filtered_df,
                 x="Approach Full",
@@ -473,13 +565,315 @@ def main():
                 barmode="group",
                 title=f"{selected_metric_label} by Movement",
                 text_auto=text_fmt,
-                labels={selected_metric_col: selected_metric_label, "Approach Full": "Approach"}
+                hover_name="Movement",
+                labels={
+                    selected_metric_col: selected_metric_label, 
+                    "Approach Full": "Approach"
+                },
+                hover_data={
+                    "Approach Full": True,
+                    "Movement": False,
+                    selected_metric_col: hover_fmt
+                }
             )
 
-            # INCREASE TEXT SIZE HERE
-            fig_mov.update_traces(textfont_size=16)
+            # Improve Tooltips + Increase text size inside bars
+            fig_mov.update_traces(
+                textfont_size=16,
+                hovertemplate="<b>Approach:</b> %{x}<br><b>Movement:</b> %{hovertext}<br><b>" + selected_metric_label + ":</b> %{y" + hover_fmt + "}" + metric_unit + "<extra></extra>"
+            )
+
+            fig_mov.update_layout(
+                legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+            )
 
             st.plotly_chart(fig_mov, use_container_width=True)
+
+        # 4. Corridor-Wide Regression Analysis
+        st.markdown("---")
+        st.subheader("Corridor-Wide Regression Analysis")
+
+        with st.expander("Regression Dictionary", expanded=False):
+            st.markdown("""
+            
+            
+            *   **Each Dot:** Represents one "approach" (a specific direction at a specific intersection, e.g., Fred Waring & Warner — Eastbound).
+            *   **The Trendline (Dashed Line):** Represents the "best-fit" linear relationship between your chosen variables. It shows the general corridor-wide trend.
+            *   **R² (Coefficient of Determination):** A statistical measure of how well the independent variable (X) explains the variation in the dependent variable (Y). 
+            *   **Goal:** Use this to identify which intersections are performing better or worse than the corridor average and to predict how changes in one metric (like Volume) might impact another (like Delay).
+            """)
+
+        st.info("This analysis combines approach-level data from all 7 intersections in the corridor (~28 data points) to identify relationships between traffic performance metrics. More data points produce more reliable regression results than single-intersection analysis.")
+
+        df_all = load_all_intersections_data(INTERSECTION_REGISTRY)
+
+        if not df_all.empty:
+            # Data Coverage Logic
+            n_points = len(df_all)
+            n_intersections = df_all["Intersection"].nunique()
+            
+            missing_items = []
+            standard_directions = ["Northbound", "Southbound", "Eastbound", "Westbound"]
+            diagonal_directions = ["Northeast", "Southeast", "Southwest", "Northwest"]
+            
+            for entry in INTERSECTION_REGISTRY:
+                intersection_data = df_all[df_all["Intersection"] == entry["label"]]
+                found_directions = intersection_data["Approach Full"].tolist()
+                
+                # Determine which set they use
+                if any(d in found_directions for d in diagonal_directions):
+                    expected = diagonal_directions
+                else:
+                    expected = standard_directions
+                    
+                missing = [d for d in expected if d not in found_directions]
+                for m in missing:
+                    missing_items.append(f"{entry['label']} — {m}")
+            
+            missing_help = ""
+            if missing_items:
+                missing_help = f"\n\n**Missing/Excluded:** {', '.join(missing_items)}"
+            
+            st.markdown(
+                f"**Data Coverage:** {n_points} approaches across {n_intersections} intersections", 
+                help=f"An 'approach' = intersection + direction (e.g., 'Washington & Miles — Eastbound'). "
+                     f"With 7 intersections, up to 28 approaches are possible (7×4). "
+                     f"Data may be missing due to detector issues or filtered out for quality.{missing_help}"
+            )
+
+            reg_col1, reg_col2 = st.columns(2)
+
+            with reg_col1:
+                x_options = {
+                    "Volume (vehicles)": "Vehicle Samples 1",
+                    "Arrivals on Green (%)": "Arrivals On Green Range 1",
+                    "Split Failures (%)": "Split Failures Range 1"
+                }
+                x_label = st.selectbox(
+                    "Independent Variable (X) — the input/cause",
+                    options=list(x_options.keys()),
+                    help="The independent variable is what we believe drives or influences the outcome. For traffic engineers: Volume measures demand pressure on the signal."
+                )
+                x_col = x_options[x_label]
+
+            with reg_col2:
+                y_options = {
+                    "Average Delay (seconds)": "Delay Range 1",
+                    "Split Failures (%)": "Split Failures Range 1",
+                    "Arrivals on Green (%)": "Arrivals On Green Range 1"
+                }
+                y_label = st.selectbox(
+                    "Dependent Variable (Y) — the outcome/effect",
+                    options=list(y_options.keys()),
+                    help="The dependent variable is the performance outcome we are trying to explain or predict. For traffic engineers: Delay is the key measure of how well the signal is serving demand."
+                )
+                y_col = y_options[y_label]
+
+            if x_col == y_col:
+                st.warning("Please select different variables for X and Y axes.")
+            else:
+                # Prepare chart
+                try:
+                    fig_reg = px.scatter(
+                        df_all,
+                        x=x_col,
+                        y=y_col,
+                        color="Intersection",
+                        symbol="Approach Full",
+                        trendline="ols",
+                        trendline_scope="overall",
+                        title=f"{x_label} vs. {y_label} — Corridor Regression Analysis",
+                        hover_name="Intersection",
+                        labels={
+                            x_col: f"← Independent Variable: {x_label}",
+                            y_col: f"Dependent Variable: {y_label} →"
+                        },
+                        hover_data=["Intersection", "Approach Full"],
+                        template="plotly_white"
+                    )
+                    fig_reg.update_layout(legend_title_text='Intersection')
+                    has_trendline = True
+                except (ImportError, ModuleNotFoundError):
+                    st.warning("Regression analysis requires 'statsmodels' library. Please install it using 'pip install statsmodels' to enable trendlines.")
+                    # Fallback to scatter without trendline
+                    fig_reg = px.scatter(
+                        df_all,
+                        x=x_col,
+                        y=y_col,
+                        color="Intersection",
+                        symbol="Approach Full",
+                        title=f"{x_label} vs. {y_label} — Corridor Data (Trendline Unavailable)",
+                        labels={
+                            x_col: f"← Independent Variable: {x_label}",
+                            y_col: f"Dependent Variable: {y_label} →"
+                        },
+                        hover_data=["Intersection", "Approach Full"],
+                        template="plotly_white"
+                    )
+                    has_trendline = False
+                except Exception as e:
+                    st.error(f"Error calculating regression: {e}")
+                    # Fallback to scatter without trendline
+                    fig_reg = px.scatter(
+                        df_all,
+                        x=x_col,
+                        y=y_col,
+                        color="Intersection",
+                        symbol="Approach Full",
+                        title=f"{x_label} vs. {y_label} — Corridor Data",
+                        labels={
+                            x_col: f"← Independent Variable: {x_label}",
+                            y_col: f"Dependent Variable: {y_label} →"
+                        },
+                        hover_data=["Intersection", "Approach Full"],
+                        template="plotly_white"
+                    )
+                    has_trendline = False
+
+                fig_reg.update_traces(marker=dict(size=10, opacity=0.8), selector=dict(mode="markers"))
+                
+                # Regression line color: "#E63946" (red), width 2.5, dash="dash"
+                if has_trendline:
+                    fig_reg.update_traces(
+                        line=dict(color="#E63946", width=2.5, dash="dash"),
+                        selector=dict(mode="lines")
+                    )
+
+                # Tooltip formatting
+                def get_fmt(label):
+                    if "Delay" in label: return ":.1f"
+                    if "Volume" in label: return ":,.0f"
+                    return ":.1%"
+                
+                def get_suffix(label):
+                    if "Delay" in label: return " sec"
+                    if "Volume" in label: return " vehicles"
+                    return ""
+
+                x_fmt = get_fmt(x_label)
+                x_suffix = get_suffix(x_label)
+                y_fmt = get_fmt(y_label)
+                y_suffix = get_suffix(y_label)
+
+                fig_reg.update_traces(
+                    hovertemplate=(
+                        "<b>Intersection:</b> %{customdata[0]}<br>"
+                        "<b>Approach:</b> %{customdata[1]}<br>"
+                        f"<b>{x_label}:</b> %{{x{x_fmt}}}{x_suffix}<br>"
+                        f"<b>{y_label}:</b> %{{y{y_fmt}}}{y_suffix}"
+                        "<extra></extra>"
+                    ),
+                    selector=dict(mode="markers")
+                )
+
+                # Add n annotation
+                n_points = len(df_all)
+                n_intersections = df_all["Intersection"].nunique()
+                fig_reg.add_annotation(
+                    text=f"n = {n_points} approaches across {n_intersections} intersections",
+                    xref="paper", yref="paper",
+                    x=0.02, y=0.98, showarrow=False,
+                    font=dict(size=12, color="#555555"),
+                    align="left"
+                )
+
+                st.plotly_chart(fig_reg, use_container_width=True)
+
+                # Statistical Results
+                if has_trendline:
+                    results = px.get_trendline_results(fig_reg)
+                    if not results.empty:
+                        st.markdown("---")
+                        st.subheader("Statistical Results & Interpretation")
+                        
+                        # Extract metrics
+                        model = results.iloc[0]["px_fit_results"]
+                        r_squared = model.rsquared
+                        slope = model.params[1]
+                        intercept = model.params[0]
+                        r_percent = r_squared * 100
+                        
+                        stat_col1, stat_col2 = st.columns([1, 2])
+                        
+                        with stat_col1:
+                            st.metric(
+                                "R² (Coefficient of Determination)",
+                                f"{r_squared:.3f}",
+                                help=(
+                                    "R² measures how well the independent variable explains variation in the dependent variable. Scale: 0.0 = no relationship, 1.0 = perfect relationship.\n\n"
+                                    "Rule of thumb for traffic engineering:\n"
+                                    "• 0.0–0.3: Weak — the variables are mostly unrelated\n"
+                                    "• 0.3–0.6: Moderate — some relationship worth investigating\n"
+                                    "• 0.6–0.8: Strong — meaningful relationship for engineering decisions\n"
+                                    "• 0.8–1.0: Very Strong — reliable predictor"
+                                )
+                            )
+                        
+                        with stat_col2:
+                            # Predictive Equation Label
+                            st.write("**Trendline Equation:**")
+                            # Simple y = mx + b form
+                            y_short = y_label.split(" (")[0]
+                            x_short = x_label.split(" (")[0]
+                            sign = "+" if intercept >= 0 else "-"
+                            st.code(f"{y_short} = ({slope:.2f} × {x_short}) {sign} {abs(intercept):.2f}", language="python")
+                            
+                            slope_dir = "Positive" if slope > 0 else "Negative"
+                            slope_desc = "higher X tends to correspond to higher Y" if slope > 0 else "higher X tends to correspond to lower Y"
+                            st.markdown(f"**Slope:** {slope_dir} ({slope_desc})")
+
+                        # Interpretation wording requested by user
+                        base_msg = f"An R-Square value of **{r_squared:.3f}** means that **{x_label}** is responsible for approximately **{r_percent:.1f}%** of the observed variation in **{y_label}** across this corridor."
+                        
+                        # Dynamic slope explanation
+                        slope_updown = "upward" if slope > 0 else "downward"
+                        trend_highlow = "higher" if slope > 0 else "lower"
+                        slope_text = f"Because the trendline slopes **{slope_updown}**, then higher **{x_label}** is generally associated with **{trend_highlow}** **{y_label}**."
+
+                        if r_squared >= 0.8:
+                            interp_head = "🟢 **Very Strong Relationship:**"
+                            interp_body = f"{x_short} is a highly reliable predictor of {y_short}. Signal timing adjustments targeting {x_short} are very likely to produce measurable improvements in {y_short}."
+                        elif r_squared >= 0.6:
+                            interp_head = "🟡 **Strong Relationship:**"
+                            interp_body = f"{x_short} shows a meaningful correlation with {y_short}. Engineers should prioritize {x_short} when optimizing signal timing plans to impact {y_short}."
+                        elif r_squared >= 0.3:
+                            interp_head = "🟠 **Moderate Relationship:**"
+                            interp_body = f"While {x_short} is a significant factor, other variables like intersection geometry, signal phasing, or pedestrian activity also play major roles."
+                        else:
+                            interp_head = "🔴 **Weak Relationship:**"
+                            interp_body = f"{x_short} does not strongly predict {y_short} across this corridor. Consider investigating other variables or looking at intersection-specific issues."
+                        
+                        st.info(f"{interp_head} {base_msg} {slope_text} {interp_body}")
+
+                        # Dots interpretation
+                        y_eval = "worse-than-expected" if ("Delay" in y_label or "Split Failures" in y_label) else "better-than-expected"
+                        opposite_eval = "better-than-expected" if y_eval == "worse-than-expected" else "worse-than-expected"
+                        
+                        st.markdown(f"""
+                        **Reading the Dots (Relative to Trend):**
+                        *   A dot **above** the trendline means the approach has higher **{y_short}** than predicted for its **{x_short}** ({y_eval}).
+                        *   A dot **below** the trendline means the approach has lower **{y_short}** than predicted for its **{x_short}** ({opposite_eval}).
+                        """)
+
+                        # Ops units (+10% AOG)
+                        if x_label == "Arrivals on Green (%)":
+                            change_y = slope * 0.10
+                            direction = "higher" if change_y > 0 else "lower"
+                            abs_change = abs(change_y)
+                            
+                            if "Delay" in y_label:
+                                val_str = f"{abs_change:.1f} seconds"
+                            elif "Arrivals on Green" in y_label or "Split Failures" in y_label:
+                                val_str = f"{abs_change*100:.1f} percentage points"
+                            else:
+                                val_str = f"{abs_change:.2f}"
+                                
+                            st.success(f"**Practical Impact:** Every **+10%** increase in Arrivals on Green is associated with about **{val_str} {direction}** {y_short} on average.")
+                            st.caption("_Note: This represents a statistical association across the corridor, not absolute proof of causation. Other factors like geometry, volumes, and spillback also affect outcomes._")
+
+                st.caption("⚠️ Note: With ~28 data points, results are directionally useful but not statistically conclusive. Regression assumes a linear relationship between variables. Use results to guide engineering judgment, not as definitive proof.")
+        else:
+            st.warning("No data available for corridor-wide regression analysis.")
 
         # Raw Data Expander
         with st.expander("View Raw Data"):
