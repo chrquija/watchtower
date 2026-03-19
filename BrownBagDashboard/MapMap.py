@@ -128,25 +128,24 @@ def render_map(
         tooltip={"text": "{name}\n({lat}, {lon})"},
     )
 
-    st.subheader("Corridor Map")
 
     # Add visual legend for markers above the map
     st.markdown(
         """
-        <div style="display: flex; flex-direction: column; align-items: center; padding: 12px; background: #f8f9fa; border-radius: 12px; margin-bottom: 10px; border: 1px solid #eee; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
-            <div style="font-weight: bold; color: #1f4582; margin-bottom: 10px; border-bottom: 1px solid #ddd; width: 100%; text-align: center; padding-bottom: 6px; font-size: 0.9rem;">Map Legend</div>
+        <div style="display: flex; flex-direction: column; align-items: center; padding: 12px; background: var(--secondary-background-color); border-radius: 12px; margin-bottom: 10px; border: 1px solid var(--border-color); box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
+            <div style="font-weight: bold; color: var(--text-color); margin-bottom: 10px; border-bottom: 1px solid var(--border-color); width: 100%; text-align: center; padding-bottom: 6px; font-size: 0.9rem;">Map Legend</div>
             <div style="display: flex; justify-content: center; gap: 20px; font-size: 0.85rem; width: 100%;">
                 <div style="display: flex; align-items: center; gap: 8px;">
                     <span style="height: 12px; width: 12px; background-color: rgb(230, 57, 70); border-radius: 50%; display: inline-block; border: 2px solid white; box-shadow: 0 0 0 1px rgb(230, 57, 70);"></span>
-                    <span style="font-weight: 600; color: #333;">Selected Intersection</span>
+                    <span style="font-weight: 600; color: var(--text-color);">Selected Intersection</span>
                 </div>
                 <div style="display: flex; align-items: center; gap: 8px;">
                     <span style="height: 12px; width: 12px; background-color: rgb(31, 69, 130); border-radius: 50%; display: inline-block; border: 2px solid white; box-shadow: 0 0 0 1px rgb(31, 69, 130);"></span>
-                    <span style="font-weight: 600; color: #333;">Other Intersections</span>
+                    <span style="font-weight: 600; color: var(--text-color);">Other Intersections</span>
                 </div>
                 <div style="display: flex; align-items: center; gap: 8px;">
-                    <span style="font-size: 1.1rem; line-height: 1;">★</span>
-                    <span style="font-weight: 600; color: #333;">Tennis Garden</span>
+                    <span style="font-size: 1.1rem; line-height: 1; color: var(--text-color);">★</span>
+                    <span style="font-weight: 600; color: var(--text-color);">Tennis Garden</span>
                 </div>
             </div>
         </div>
