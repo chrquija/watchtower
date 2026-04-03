@@ -6,3 +6,4 @@ requests
 openpyxl
 pydeck>=0.9
 statsmodels
+matplotlib

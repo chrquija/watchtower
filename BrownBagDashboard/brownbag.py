@@ -21,6 +21,18 @@ DIRECTION_MAP = {
     "NE": "Northeast", "NW": "Northwest", "SE": "Southeast", "SW": "Southwest"
 }
 
+# Standardized color scheme for directions/approaches
+DIRECTION_COLORS = {
+    "Northbound": "#3b82f6", # Blue
+    "Southbound": "#f97316", # Orange
+    "Eastbound": "#10b981",  # Emerald
+    "Westbound": "#ef4444",  # Red
+    "Northeast": "#8b5cf6",  # Violet
+    "Northwest": "#f59e0b",  # Amber
+    "Southeast": "#ec4899",  # Pink
+    "Southwest": "#06b6d4",  # Cyan
+}
+
 # Registry of available intersections
 INTERSECTION_REGISTRY = [
     {
@@ -80,6 +92,10 @@ INTERSECTION_REGISTRY = [
             {
                 "date_label": "March 9 – March 16, 2025",
                 "url": "https://raw.githubusercontent.com/chrquija/BrownBag_Dashboard/main/data/115_TMC_WashingtonSt_and_FredWaringDr_Mar9toMar162025.xlsx"
+            },
+            {
+                "date_label": "March 8 – March 15, 2026",
+                "url": "https://raw.githubusercontent.com/chrquija/BrownBag_Dashboard/main/data/115_TMC_WashingtonSt_and_FredWaringDr_Mar8toMar152026.xlsx"
             }
         ]
     },
@@ -1012,7 +1028,8 @@ def main():
                 registry=INTERSECTION_REGISTRY,
                 load_data_func=load_data,
                 get_meta_value_func=get_meta_value,
-                direction_map=DIRECTION_MAP
+                direction_map=DIRECTION_MAP,
+                direction_colors=DIRECTION_COLORS
             )
 
 
