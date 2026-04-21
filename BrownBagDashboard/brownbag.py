@@ -2,9 +2,11 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
+import io
 # (no local file access or mock generation needed)
 from MapMap import render_map
 from apples import render_apples_tab
+from adt import ADT_REGISTRY, render_adt_tab, get_adt_export_data
 # (no local file access or mock generation needed)
 
 # Set page configuration
@@ -261,30 +263,70 @@ def load_all_intersections_data(registry):
 # --- Main Application ---
 
 def main():
-    # 1. Sidebar: Settings section
-    st.sidebar.markdown("## Settings")
-    selected_name = st.sidebar.selectbox(
-        "Intersection",
-        options=[i["label"] for i in INTERSECTION_REGISTRY],
-        index=[i["label"] for i in INTERSECTION_REGISTRY].index(DEFAULT_INTERSECTION_NAME)
+    # 0. Sidebar: Analysis Mode selector
+    st.sidebar.markdown("## Analysis Mode")
+    analysis_mode = st.sidebar.radio(
+        "Select Mode",
+        options=["Intersection Analysis", "ADT Analysis"],
+        index=0
     )
+    st.sidebar.markdown("---")
 
-    # Get details for the selected intersection
-    selected = next(i for i in INTERSECTION_REGISTRY if i["label"] == selected_name)
+    # 1.5. Sidebar: Map Settings section
+    st.sidebar.markdown("## Map Settings")
+    use_satellite = st.sidebar.checkbox("Satellite View", value=False)
+    st.sidebar.markdown("---")
 
-    # If this intersection has multiple datasets, show a date range selector
-    if len(selected["datasets"]) > 1:
-        date_labels = [d["date_label"] for d in selected["datasets"]]
-        chosen_date_label = st.sidebar.selectbox(
-            "SELECT DATE RANGE",
-            options=date_labels,
-            index=0
+    # 1. Sidebar: Settings section
+    if analysis_mode == "Intersection Analysis":
+        st.sidebar.markdown("## Settings")
+        selected_name = st.sidebar.selectbox(
+            "Intersection",
+            options=[i["label"] for i in INTERSECTION_REGISTRY],
+            index=[i["label"] for i in INTERSECTION_REGISTRY].index(DEFAULT_INTERSECTION_NAME)
         )
-        chosen_dataset = next(d for d in selected["datasets"] if d["date_label"] == chosen_date_label)
-    else:
-        chosen_dataset = selected["datasets"][0]
 
-    DATA_URL = chosen_dataset["url"]
+        # Get details for the selected intersection
+        selected = next(i for i in INTERSECTION_REGISTRY if i["label"] == selected_name)
+
+        # If this intersection has multiple datasets, show a date range selector
+        if len(selected["datasets"]) > 1:
+            date_labels = [d["date_label"] for d in selected["datasets"]]
+            chosen_date_label = st.sidebar.selectbox(
+                "SELECT DATE RANGE",
+                options=date_labels,
+                index=0
+            )
+            chosen_dataset = next(d for d in selected["datasets"] if d["date_label"] == chosen_date_label)
+        else:
+            chosen_dataset = selected["datasets"][0]
+
+        DATA_URL = chosen_dataset["url"]
+    else:
+        # ADT Analysis Mode
+        st.sidebar.markdown("## ADT Settings")
+        all_corridors = sorted(list(set([c for entry in ADT_REGISTRY for c in entry["corridors"]])))
+        selected_corridor = st.sidebar.selectbox("Select Corridor", options=all_corridors)
+        adt_sort_order = st.sidebar.selectbox("Sort Intersections By", options=["Registry Order", "ADT (High to Low)", "ADT (Low to High)"])
+        adt_show_raw = st.sidebar.checkbox("Show Raw Data Table", value=False)
+        
+        # We still need a 'selected' intersection for the rest of the app scaffolding
+        corridor_intersections = [entry for entry in ADT_REGISTRY if selected_corridor in entry["corridors"]]
+        if corridor_intersections:
+            selected_name = corridor_intersections[0]["label"]
+        else:
+            selected_name = DEFAULT_INTERSECTION_NAME
+            
+        selected = next((i for i in INTERSECTION_REGISTRY if i["label"] == selected_name), INTERSECTION_REGISTRY[0])
+        DATA_URL = selected["datasets"][0]["url"]
+
+    # --- Export Helper ---
+    def generate_excel_bytes(df_dict):
+        output = io.BytesIO()
+        with pd.ExcelWriter(output, engine='openpyxl') as writer:
+            for sheet_name, df in df_dict.items():
+                df.to_excel(writer, sheet_name=sheet_name[:31], index=False)
+        return output.getvalue()
 
     # Load data early to use metadata for labels
     data = load_data(DATA_URL)
@@ -321,10 +363,10 @@ def main():
     if corridor == "N/A":
         corridor = selected["label"]
 
-    # Sidebar: move dynamic metadata out of the main header to reduce crowding
-    st.sidebar.markdown("## Location Info")
-    st.sidebar.markdown(
-        f"""
+    if analysis_mode == "Intersection Analysis":
+        st.sidebar.markdown("## Location Info")
+        st.sidebar.markdown(
+            f"""
 - **Data Source:** {Data_Source}
 - **Date Range:** {date_range}
 - **City:** {city}
@@ -334,87 +376,121 @@ def main():
 - **Secondary:** {secondary_street}
 - **Tertiary:** {tertiary_street}
 - **Coordinates:** {coordinates}
-        """
-    )
+            """
+        )
 
     # Optional toggles for showing details in the main area
     show_details_in_header = st.sidebar.checkbox("Show metadata in banner", value=False)
 
+    # 3. Sidebar: Export Data Section
+    st.sidebar.markdown("---")
+    st.sidebar.markdown("## Export Data")
+    
+    if analysis_mode == "Intersection Analysis":
+        export_df_dict = {
+            "Metadata": df_meta,
+            "Intersection": df_int,
+            "By Approach": df_app,
+            "By Movement": df_mov
+        }
+        export_filename = f"Intersection_{intersection.replace(' ', '_').replace('&', 'and')}.xlsx"
+        
+        excel_data = generate_excel_bytes(export_df_dict)
+        st.sidebar.download_button(
+            label="Download Intersection Data (Excel)",
+            data=excel_data,
+            file_name=export_filename,
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
+    else:
+        # ADT Analysis Mode
+        export_filename = f"Corridor_{selected_corridor.replace(' ', '_').replace('→', 'to')}.xlsx"
+        # We fetch the data for the whole corridor
+        with st.sidebar:
+            if st.button("Prepare Corridor Export"):
+                with st.spinner("Gathering data..."):
+                    adt_export_data = get_adt_export_data(
+                        selected_corridor, ADT_REGISTRY, load_data, get_meta_value, DIRECTION_MAP
+                    )
+                    if adt_export_data:
+                        excel_data = generate_excel_bytes(adt_export_data)
+                        st.download_button(
+                            label="Click to Download ADT Data",
+                            data=excel_data,
+                            file_name=export_filename,
+                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                        )
+                    else:
+                        st.error("Failed to gather corridor data.")
+
     # Compact header (title + key subtitle only)
-    header_html = f"""
-           <style>
-               .bbg-header {{
-                   background: #1f4582;
-                   color: #ffffff;
-                   padding: 16px 24px;
-                   border-radius: 14px;
-                   margin-bottom: 14px;
-               }}
-               .bbg-header .company {{
-                   font-size: 11px;
-                   font-weight: 600;
-                   letter-spacing: 2px;
-                   text-transform: uppercase;
-                   opacity: 0.75;
-                   margin: 0 0 4px 0;
-               }}
-               .bbg-header h1 {{
-                   margin: 0 0 4px 0;
-                   font-size: 26px;
-                   font-weight: 800;
-                   letter-spacing: 0.5px;
-               }}
-            .bbg-header .subtitle {{
-                display: inline-block;
-                margin: 6px 12px 0 0;
-                font-size: 14px;
-                font-weight: 500;
-                letter-spacing: 0.4px;
-                background: rgba(255,255,255,0.12);
-                border: 1px solid rgba(255,255,255,0.25);
-                border-radius: 20px;
-                padding: 4px 14px;
-                opacity: 1;
-            }}
-               .bbg-header .datasource {{
-                   display: inline-block;
-                   margin: 6px 0 0 0;
-                   font-size: 13px;
-                   font-weight: 400;
-                   opacity: 0.85;
-               }}
-               .bbg-header .datasource a {{
-                   color: #ffffff;
-                   text-decoration: underline;
-                   text-underline-offset: 2px;
-               }}
-               .bbg-header .datasource a:hover {{
-                   opacity: 1;
-                   color: #ffffff;
-               }}
-               .bbg-meta {{
-                   display: grid;
-                   grid-template-columns: repeat(2, minmax(200px, 1fr));
-                   gap: 4px 16px;
-                   font-size: 13px;
-                   margin-top: 10px;
-               }}
-               .bbg-meta div span {{ opacity: 0.9; }}
-               @media (max-width: 800px) {{ .bbg-meta {{ grid-template-columns: 1fr; }} }}
-           </style>
-           <div class="bbg-header">
-               <p class="company">Advantec Consulting Engineers</p>
-               <h1>INTERSECTION PERFORMANCE DASHBOARD</h1>
-               <p class="subtitle">📍 {intersection}</p>
-               <p class="datasource">Data Source: <a href="{DATA_URL}" target="_blank">{Data_Source}</a></p>
-               {f'<div class="bbg-meta">\n'
-                f'  <div><strong>Corridor:</strong> <span>{corridor}</span></div>\n'
-                f'  <div><strong>City:</strong> <span>{city}</span></div>\n'
-                f'  <div><strong>Date Range:</strong> <span>{date_range}</span></div>\n'
-                f'  <div><strong>Coordinates:</strong> <span>{coordinates}</span></div>\n'
-                f'</div>' if show_details_in_header else ''}
-           </div>
-           """
+    header_html = f"""<style>
+.bbg-header {{
+    background: #1f4582;
+    color: #ffffff;
+    padding: 16px 24px;
+    border-radius: 14px;
+    margin-bottom: 14px;
+}}
+.bbg-header .company {{
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    opacity: 0.75;
+    margin: 0 0 4px 0;
+}}
+.bbg-header h1 {{
+    margin: 0 0 4px 0;
+    font-size: 26px;
+    font-weight: 800;
+    letter-spacing: 0.5px;
+}}
+.bbg-header .subtitle {{
+    display: inline-block;
+    margin: 6px 12px 0 0;
+    font-size: 14px;
+    font-weight: 500;
+    letter-spacing: 0.4px;
+    background: rgba(255,255,255,0.12);
+    border: 1px solid rgba(255,255,255,0.25);
+    border-radius: 20px;
+    padding: 4px 14px;
+    opacity: 1;
+}}
+.bbg-header .datasource {{
+    display: inline-block;
+    margin: 6px 0 0 0;
+    font-size: 13px;
+    font-weight: 400;
+    opacity: 0.85;
+}}
+.bbg-header .datasource a {{
+    color: #ffffff;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+}}
+.bbg-header .datasource a:hover {{
+    opacity: 1;
+    color: #ffffff;
+}}
+.bbg-meta {{
+    display: grid;
+    grid-template-columns: repeat(2, minmax(200px, 1fr));
+    gap: 4px 16px;
+    font-size: 13px;
+    margin-top: 10px;
+}}
+.bbg-meta div span {{ opacity: 0.9; }}
+@media (max-width: 800px) {{ .bbg-meta {{ grid-template-columns: 1fr; }} }}
+</style>
+<div class="bbg-header">
+<p class="company">Advantec Consulting Engineers</p>
+<h1>INTERSECTION PERFORMANCE DASHBOARD</h1>
+<p class="subtitle">📍 {intersection}</p>
+<p class="datasource">Data Source: <a href="{DATA_URL}" target="_blank">{Data_Source}</a></p>
+{f'<div class="bbg-meta">\n<div><strong>Corridor:</strong> <span>{corridor}</span></div>\n<div><strong>City:</strong> <span>{city}</span></div>\n<div><strong>Date Range:</strong> <span>{date_range}</span></div>\n<div><strong>Coordinates:</strong> <span>{coordinates}</span></div>\n</div>' if show_details_in_header else ''}
+</div>"""
 
     st.markdown(header_html, unsafe_allow_html=True)
     st.markdown("---")
@@ -423,40 +499,133 @@ def main():
     
     # Make the right rail sticky and a bit thinner via CSS
     st.markdown(
-        """
-        <style>
-        /* Sticky right rail: target the 2nd column's inner block */
-        div[data-testid="column"]:nth-child(2) > div {
-            position: sticky;
-            top: 96px; /* leave space for header */
-        }
-        /* Disable stickiness on small screens to avoid layout issues */
-        @media (max-width: 1100px) {
-            div[data-testid="column"]:nth-child(2) > div { position: static; }
-        }
-        </style>
-        """,
+        """<style>
+/* Sticky right rail: target the 2nd column's inner block */
+div[data-testid="column"]:nth-child(2) > div {
+    position: sticky;
+    top: 96px; /* leave space for header */
+}
+/* Disable stickiness on small screens to avoid layout issues */
+@media (max-width: 1100px) {
+    div[data-testid="column"]:nth-child(2) > div { position: static; }
+}
+</style>""",
         unsafe_allow_html=True,
     )
 
     # Make the map column thinner: 8/4 split
     left_col, right_col = st.columns([8, 4], gap="large")
 
+    # Prepare combined registry for the map context
+    map_registry = []
+    for entry in INTERSECTION_REGISTRY:
+        map_registry.append({"label": entry["label"], "lat": entry["lat"], "lon": entry["lon"]})
+    for entry in ADT_REGISTRY:
+        if not any(e["label"] == entry["label"] for e in map_registry):
+            map_registry.append({"label": entry["label"], "lat": entry["lat"], "lon": entry["lon"]})
+
     # Map stays pinned in the right rail
     with right_col:
-        render_map(
-            latitude=selected["lat"],
-            longitude=selected["lon"],
-            height=900,  # longer map
-            zoom=13,
-            label=intersection,
-            registry=INTERSECTION_REGISTRY,
-        )
+        if analysis_mode == "Intersection Analysis":
+            # Gather all intersections in this corridor for the map sidebar
+            target_corridor = corridor
+            relevant_intersections = [
+                i for i in INTERSECTION_REGISTRY 
+                if i.get("corridor") == target_corridor or (i.get("corridor", "N/A") == "N/A" and i.get("label") == target_corridor)
+            ]
+            
+            intersections_data = []
+            seen_urls = set()
+            for item in relevant_intersections:
+                for ds in item.get("datasets", []):
+                    if ds["url"] not in seen_urls:
+                        lbl = item["label"]
+                        if ds["date_label"] != "Default":
+                            lbl = f"{lbl} ({ds['date_label']})"
+                        intersections_data.append({"name": lbl, "url": ds["url"]})
+                        seen_urls.add(ds["url"])
+
+            corridor_labels = [i["label"] for i in INTERSECTION_REGISTRY if i["corridor"] == selected["corridor"]]
+            
+            # Calculate days for Intersection Analysis
+            try:
+                sd = pd.to_datetime(start_date)
+                ed = pd.to_datetime(end_date)
+                num_days = (ed - sd).days + 1
+                study_period_str = f"{date_range} ({num_days} days)"
+            except:
+                study_period_str = date_range
+
+            render_map(
+                latitude=selected["lat"],
+                longitude=selected["lon"],
+                height=900,  # longer map
+                zoom=None,
+                label=intersection,
+                registry=map_registry,
+                use_satellite=use_satellite,
+                highlight_labels=corridor_labels,
+                study_period=study_period_str,
+                intersections=intersections_data
+            )
+        else:
+            # ADT Analysis Mode: Dynamic corridor view
+            corridor_entries = [entry for entry in ADT_REGISTRY if selected_corridor in entry["corridors"]]
+            
+            intersections_data = []
+            seen_urls = set()
+            for item in corridor_entries:
+                if item["url"] not in seen_urls:
+                    intersections_data.append({"name": item["label"], "url": item["url"]})
+                    seen_urls.add(item["url"])
+
+            # Determine corridor-wide Study Period
+            corridor_date_range = "N/A"
+            start = None
+            end = None
+            for entry in corridor_entries:
+                # Use load_data logic (already in current file)
+                data = load_data(entry["url"])
+                if data:
+                    df_meta = data[0]
+                    curr_start = get_meta_value(df_meta, "Start Date")
+                    curr_end = get_meta_value(df_meta, "End Date")
+                    file_range = f"{curr_start} to {curr_end}"
+                    if corridor_date_range == "N/A":
+                        corridor_date_range = file_range
+                        start = curr_start
+                        end = curr_end
+                    elif corridor_date_range != file_range:
+                        corridor_date_range = "Mixed"
+                        break
+
+            if corridor_date_range != "N/A" and corridor_date_range != "Mixed":
+                try:
+                    sd = pd.to_datetime(start)
+                    ed = pd.to_datetime(end)
+                    num_days = (ed - sd).days + 1
+                    corridor_study_period_str = f"{corridor_date_range} ({num_days} days)"
+                except:
+                    corridor_study_period_str = corridor_date_range
+            else:
+                corridor_study_period_str = corridor_date_range
+
+            corridor_labels = [entry["label"] for entry in corridor_entries]
+            render_map(
+                height=900,
+                label=selected_corridor,
+                registry=map_registry,
+                use_satellite=use_satellite,
+                highlight_labels=corridor_labels,
+                study_period=corridor_study_period_str,
+                intersections=intersections_data
+            )
 
     # All analytics content lives inside the left column
     with left_col:
         # Create tabs for different analysis sections
-        tab1, tab2, tab3 = st.tabs(["Intersection Analysis", "Corridor-Wide Regression", "Apples-to-Apples"])
+        tabs = ["Average Daily Traffic (ADT)", "Intersection Analysis", "Corridor-Wide Regression", "Apples-to-Apples"]
+        tab_adt, tab1, tab2, tab3 = st.tabs(tabs)
 
         # Helper to format percentages safely (handles 0.78 vs 78)
         def format_percent(val):
@@ -467,6 +636,21 @@ def main():
                 return f"{val:.1f}%"  # Assumes 0-100 scale
             return f"{val:.1%}"       # Assumes 0-1 scale
 
+        with tab_adt:
+            if analysis_mode == "ADT Analysis":
+                render_adt_tab(
+                    selected_corridor=selected_corridor,
+                    adt_registry=ADT_REGISTRY,
+                    load_data_func=load_data,
+                    get_meta_value_func=get_meta_value,
+                    direction_map=DIRECTION_MAP,
+                    direction_colors=DIRECTION_COLORS,
+                    sort_by=adt_sort_order,
+                    show_raw=adt_show_raw
+                )
+            else:
+                st.info("Switch to **ADT Analysis** mode in the sidebar to view corridor-wide traffic volumes.")
+
         with tab1:
             # 1. High-level KPIs (Intersection Sheet)
             st.subheader("High-Level KPIs")
@@ -475,19 +659,41 @@ def main():
 
             with kpi_col1:
                 val = df_int["Delay Range 1"].iloc[0]
-                st.metric("Average Delay (s)", f"{val:.1f} seconds")
+                st.markdown(f"""
+<div style="background: var(--secondary-background-color); padding: 15px 5px; border-radius: 12px; border: 2px solid #1f4582; text-align: center; box-shadow: 0 4px 8px rgba(0,0,0,0.05); min-height: 120px; display: flex; flex-direction: column; justify-content: center;">
+    <div style="font-size: 0.8rem; color: #1f4582; text-transform: uppercase; font-weight: 800; letter-spacing: 0.5px; margin-bottom: 8px; line-height: 1.2;">Average Delay (s)</div>
+    <div style="font-size: 1.8rem; font-weight: 900; color: var(--text-color); line-height: 1;">{val:.1f}</div>
+    <div style="font-size: 0.85rem; font-weight: 600; opacity: 0.7; margin-top: 4px;">seconds</div>
+</div>
+""", unsafe_allow_html=True)
 
             with kpi_col2:
                 val = df_int["Arrivals On Green Range 1"].iloc[0]
-                st.metric("Arrivals On Green", format_percent(val))
+                st.markdown(f"""
+<div style="background: var(--secondary-background-color); padding: 15px 5px; border-radius: 12px; border: 2px solid #1f4582; text-align: center; box-shadow: 0 4px 8px rgba(0,0,0,0.05); min-height: 120px; display: flex; flex-direction: column; justify-content: center;">
+    <div style="font-size: 0.8rem; color: #1f4582; text-transform: uppercase; font-weight: 800; letter-spacing: 0.5px; margin-bottom: 8px; line-height: 1.2;">Arrivals On Green</div>
+    <div style="font-size: 1.8rem; font-weight: 900; color: var(--text-color); line-height: 1;">{format_percent(val)}</div>
+</div>
+""", unsafe_allow_html=True)
 
             with kpi_col3:
                 val = df_int["Split Failures Range 1"].iloc[0]
-                st.metric("Split Failures", format_percent(val))
+                st.markdown(f"""
+<div style="background: var(--secondary-background-color); padding: 15px 5px; border-radius: 12px; border: 2px solid #1f4582; text-align: center; box-shadow: 0 4px 8px rgba(0,0,0,0.05); min-height: 120px; display: flex; flex-direction: column; justify-content: center;">
+    <div style="font-size: 0.8rem; color: #1f4582; text-transform: uppercase; font-weight: 800; letter-spacing: 0.5px; margin-bottom: 8px; line-height: 1.2;">Split Failures</div>
+    <div style="font-size: 1.8rem; font-weight: 900; color: var(--text-color); line-height: 1;">{format_percent(val)}</div>
+</div>
+""", unsafe_allow_html=True)
 
             with kpi_col4:
                 val = df_int["Vehicle Samples 1"].iloc[0]
-                st.metric("Total Vehicles", f"{int(val):,} vehicles")
+                st.markdown(f"""
+<div style="background: var(--secondary-background-color); padding: 15px 5px; border-radius: 12px; border: 2px solid #1f4582; text-align: center; box-shadow: 0 4px 8px rgba(0,0,0,0.05); min-height: 120px; display: flex; flex-direction: column; justify-content: center;">
+    <div style="font-size: 0.8rem; color: #1f4582; text-transform: uppercase; font-weight: 800; letter-spacing: 0.5px; margin-bottom: 8px; line-height: 1.2;">Total Vehicles</div>
+    <div style="font-size: 1.8rem; font-weight: 900; color: var(--text-color); line-height: 1;">{int(val):,}</div>
+    <div style="font-size: 0.85rem; font-weight: 600; opacity: 0.7; margin-top: 4px;">vehicles</div>
+</div>
+""", unsafe_allow_html=True)
 
             # 2. Approach Analysis (By Approach Sheet)
             st.markdown("---")
@@ -514,20 +720,22 @@ def main():
                 )
                 fig_delay.update_layout(
                     showlegend=False,
+                    title_font_size=26,
                     yaxis_title="Control Delay (seconds)",
                     xaxis=dict(
-                        title=dict(text="<b>Approach</b>")
+                        title=dict(text="<b>Approach</b>", font=dict(size=22)),
+                        tickfont=dict(size=18)
                     ),
                     yaxis=dict(
-                        title=dict(text="<b>Control Delay (seconds)</b>")
+                        title=dict(text="<b>Control Delay (seconds)</b>", font=dict(size=22)),
+                        tickfont=dict(size=18)
                     ),
-                    uniformtext_minsize=8,
+                    uniformtext_minsize=10,
                     uniformtext_mode='show'
                 )
-                # Improve Tooltips + Increase text size inside bars, ensure white font for bar values
+                # Improve Tooltips + Increase text size inside bars
                 fig_delay.update_traces(
-                    textfont_size=14,
-                    textfont_color="white",
+                    textfont_size=20,
                     textposition="auto",
                     cliponaxis=False,
                     hovertemplate="<b>Approach:</b> %{x}<br><b>Average Delay:</b> %{y:.1f} seconds<extra></extra>"
@@ -551,7 +759,7 @@ def main():
                     textposition='auto',
                     name="Vehicles",
                     marker_color='rgb(55, 83, 109)',
-                    textfont=dict(color="white", size=14),
+                    textfont=dict(size=18),
                     hovertemplate="<b>Approach:</b> %{x}<br><b>Vehicles:</b> %{y:,}<extra></extra>"
                 ))
 
@@ -564,28 +772,45 @@ def main():
                     y=split_fail_values,
                     name="Split Failure %",
                     yaxis="y2",
-                    mode="lines+markers",
+                    mode="lines+markers+text",
+                    text=split_fail_values,
+                    texttemplate='%{text:.1%}',
+                    textposition="top center",
+                    textfont=dict(size=16),
                     line=dict(color='rgb(219, 64, 82)', width=3),
                     hovertemplate="<b>Approach:</b> %{x}<br><b>Split Failure:</b> %{y:.1%}<extra></extra>"
                 ))
 
                 fig_combo.update_layout(
                     title=f"<b>{intersection}</b><br><sup>Vehicles vs. Split Failures | {date_range}</sup>",
-                    uniformtext_minsize=8,
+                    title_font_size=26,
+                    uniformtext_minsize=10,
                     uniformtext_mode='show',
+                    margin=dict(t=120, b=100),
                     xaxis=dict(
-                        title=dict(text="<b>Approach</b>")
+                        title=dict(text="<b>Approach</b>", font=dict(size=22)),
+                        tickfont=dict(size=18)
                     ),
                     yaxis=dict(
-                        title=dict(text="<b>Vehicles</b>")
+                        title=dict(text="<b>Vehicles</b>", font=dict(size=22)),
+                        tickfont=dict(size=18)
                     ),
                     yaxis2=dict(
-                        title=dict(text="<b>Split Failures %</b>"),
+                        title=dict(text="<b>Split Failures %</b>", font=dict(size=22)),
                         overlaying="y",
                         side="right",
-                        tickformat=".1%"
+                        tickformat=".1%",
+                        tickfont=dict(size=18)
                     ),
-                    legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+                    legend=dict(
+                        orientation="h", 
+                        yanchor="top", 
+                        y=-0.15, 
+                        xanchor="center", 
+                        x=0.5,
+                        font=dict(size=20),
+                        itemsizing='constant'
+                    )
                 )
                 st.plotly_chart(fig_combo, use_container_width=True)
 
@@ -682,24 +907,35 @@ def main():
                     }
                 )
 
-                # Improve Tooltips + Increase text size inside bars, ensure white font for bar values
+                # Improve Tooltips + Increase text size inside bars
                 fig_mov.update_traces(
-                    textfont_size=14,
-                    textfont_color="white",
+                    textfont_size=20,
                     textposition="auto",
                     cliponaxis=False,
                     hovertemplate="<b>Approach:</b> %{x}<br><b>Movement:</b> %{hovertext}<br><b>" + selected_metric_label + ":</b> %{y" + hover_fmt + "}" + metric_unit + "<extra></extra>"
                 )
 
                 fig_mov.update_layout(
-                    uniformtext_minsize=8,
+                    title_font_size=26,
+                    uniformtext_minsize=10,
                     uniformtext_mode='show',
-                    legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+                    margin=dict(t=120, b=100),
+                    legend=dict(
+                        orientation="h", 
+                        yanchor="top", 
+                        y=-0.15, 
+                        xanchor="center", 
+                        x=0.5,
+                        font=dict(size=20),
+                        itemsizing='constant'
+                    ),
                     xaxis=dict(
-                        title=dict(text="<b>Approach</b>")
+                        title=dict(text="<b>Approach</b>", font=dict(size=22)),
+                        tickfont=dict(size=18)
                     ),
                     yaxis=dict(
-                        title=dict(text=f"<b>{selected_metric_label}</b>")
+                        title=dict(text=f"<b>{selected_metric_label}</b>", font=dict(size=22)),
+                        tickfont=dict(size=18)
                     )
                 )
 
@@ -793,7 +1029,8 @@ def main():
                             symbol="Approach Full",
                             trendline="ols",
                             trendline_scope="overall",
-                            title=f"{x_label} vs. {y_label} — Corridor Regression Analysis",
+                            title=f"<b>{x_label} vs. {y_label}</b><br><sup>Corridor Regression Analysis</sup>",
+                            text="Intersection",
                             hover_name="Intersection",
                             labels={
                                 x_col: f"← Independent Variable: {x_label}",
@@ -801,7 +1038,23 @@ def main():
                             },
                             hover_data=["Intersection", "Approach Full"]
                         )
-                        fig_reg.update_layout(legend_title_text='Intersection')
+                        fig_reg.update_layout(
+                            title_font_size=26,
+                            xaxis=dict(
+                                title=dict(font=dict(size=22)),
+                                tickfont=dict(size=18)
+                            ),
+                            yaxis=dict(
+                                title=dict(font=dict(size=22)),
+                                tickfont=dict(size=18)
+                            ),
+                            legend=dict(
+                                title=dict(text="<b>Intersection</b>", font=dict(size=16)),
+                                font=dict(size=14),
+                                itemsizing='constant'
+                            )
+                        )
+                        fig_reg.update_traces(textposition='top center', textfont_size=12)
                         has_trendline = True
 
                         # Extract regression results for KPIs
@@ -821,13 +1074,20 @@ def main():
                             y=y_col,
                             color="Intersection",
                             symbol="Approach Full",
-                            title=f"{x_label} vs. {y_label} — Corridor Data (Trendline Unavailable)",
+                            title=f"<b>{x_label} vs. {y_label}</b><br><sup>Corridor Data (Trendline Unavailable)</sup>",
+                            text="Intersection",
                             labels={
                                 x_col: f"← Independent Variable: {x_label}",
                                 y_col: f"Dependent Variable: {y_label} →"
                             },
                             hover_data=["Intersection", "Approach Full"]
                         )
+                        fig_reg.update_layout(
+                            title_font_size=26,
+                            xaxis=dict(title=dict(font=dict(size=18))),
+                            yaxis=dict(title=dict(font=dict(size=18)))
+                        )
+                        fig_reg.update_traces(textposition='top center', textfont_size=9)
                         has_trendline = False
                         r_squared, slope, intercept = 0, 0, 0
                     except Exception as e:
@@ -838,13 +1098,20 @@ def main():
                             y=y_col,
                             color="Intersection",
                             symbol="Approach Full",
-                            title=f"{x_label} vs. {y_label} — Corridor Data",
+                            title=f"<b>{x_label} vs. {y_label}</b><br><sup>Corridor Data</sup>",
+                            text="Intersection",
                             labels={
                                 x_col: f"← Independent Variable: {x_label}",
                                 y_col: f"Dependent Variable: {y_label} →"
                             },
                             hover_data=["Intersection", "Approach Full"]
                         )
+                        fig_reg.update_layout(
+                            title_font_size=26,
+                            xaxis=dict(title=dict(font=dict(size=18))),
+                            yaxis=dict(title=dict(font=dict(size=18)))
+                        )
+                        fig_reg.update_traces(textposition='top center', textfont_size=9)
                         has_trendline = False
                         r_squared, slope, intercept = 0, 0, 0
 
@@ -901,19 +1168,18 @@ def main():
                     # Update layout for better legend and fonts
                     fig_reg.update_layout(
                         legend=dict(
-                            title=dict(text="<b>Intersection</b>", font=dict(size=14)),
-                            font=dict(size=12),
-                            borderwidth=1
+                            title=dict(text="<b>Intersection</b>", font=dict(size=22)),
+                            font=dict(size=18),
+                            itemsizing='constant'
                         ),
-                        font=dict(size=13, family="Arial, sans-serif"),
-                        title=dict(font=dict(size=16, family="Arial, sans-serif")),
+                        font=dict(family="Arial, sans-serif"),
                         xaxis=dict(
-                            title=dict(font=dict(size=14)),
-                            tickfont=dict(size=12)
+                            title=dict(font=dict(size=22)),
+                            tickfont=dict(size=18)
                         ),
                         yaxis=dict(
-                            title=dict(font=dict(size=14)),
-                            tickfont=dict(size=12)
+                            title=dict(font=dict(size=22)),
+                            tickfont=dict(size=18)
                         )
                     )
 
@@ -942,13 +1208,12 @@ def main():
                                 r2_color, r2_label, st_func = "#dc3545", "Weak", st.error
                                 interp_head = "🔴 **Weak Relationship:**"
 
-                            st.markdown(f"""
-                                <div style="background: {r2_color}15; padding: 24px; border-radius: 15px; border: 1px solid {r2_color}44; text-align: center; margin-bottom: 20px;">
-                                    <div style="font-size: 0.85rem; color: var(--text-color); opacity: 0.7; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px;">Relationship Strength (R²)</div>
-                                    <div style="font-size: 3.5rem; font-weight: 900; color: {r2_color}; line-height: 1; margin: 0;">{r_squared:.3f}</div>
-                                    <div style="font-size: 1.25rem; font-weight: 700; color: {r2_color}; margin-top: 10px;">{r2_label}</div>
-                                </div>
-                            """, unsafe_allow_html=True)
+                            r2_html = f"""<div style="background: {r2_color}15; padding: 24px; border-radius: 15px; border: 1px solid {r2_color}44; text-align: center; margin-bottom: 20px;">
+<div style="font-size: 0.85rem; color: var(--text-color); opacity: 0.7; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px;">Relationship Strength (R²)</div>
+<div style="font-size: 3.5rem; font-weight: 900; color: {r2_color}; line-height: 1; margin: 0;">{r_squared:.3f}</div>
+<div style="font-size: 1.25rem; font-weight: 700; color: {r2_color}; margin-top: 10px;">{r2_label}</div>
+</div>"""
+                            st.markdown(r2_html, unsafe_allow_html=True)
 
                             # Predictive Equation Label
                             st.write("**Trendline Equation:**")

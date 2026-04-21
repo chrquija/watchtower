@@ -4,6 +4,7 @@ pandas
 numpy
 requests
 openpyxl
-pydeck>=0.9
+folium
+streamlit-folium
 statsmodels
 matplotlib

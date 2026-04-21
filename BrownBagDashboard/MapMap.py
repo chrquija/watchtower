@@ -1,22 +1,27 @@
 import streamlit as st
 import pandas as pd
-import pydeck as pdk
+import folium
+from streamlit_folium import st_folium
 
 
 def render_map(
-    latitude: float,
-    longitude: float,
+    latitude: float = None,
+    longitude: float = None,
     *,
     height: int = 620,
-    zoom: int = 14,
+    zoom: int = None,
     label: str = "Intersection",
     registry: list = None,
+    use_satellite: bool = False,
+    highlight_labels: list = None,
+    study_period: str = None,
+    intersections: list = None,
 ):
-    """Render an interactive map centered on the given coordinates with a label.
+    """Render an interactive map centered on the given coordinates using Folium.
 
-    - Places a marker and text label at the intersection location
-    - Shows other intersections from the registry if provided
-    - Uses OpenStreetMap tiles (no Mapbox token required)
+    - Places circle markers for all intersections
+    - Highlights current/corridor intersections with larger red markers and text labels
+    - Supports satellite mode via ESRI World Imagery
     - Intended to be used in the right-hand column of the dashboard
     """
 
@@ -28,129 +33,187 @@ def render_map(
             df['name'] = df['label']
     else:
         # Fallback to single-point if no registry provided
+        if latitude is None or longitude is None:
+            st.warning("Map coordinates not provided.")
+            return
+
         df = pd.DataFrame({
             "lat": [latitude],
             "lon": [longitude],
             "name": [label],
         })
 
-    # Styling logic: Distinguish the selected intersection
-    def get_color(row):
-        # We compare by coordinates and label for robustness
-        is_selected = (
-            abs(row['lat'] - latitude) < 1e-6 and
-            abs(row['lon'] - longitude) < 1e-6 and
-            row['name'] == label
-        )
-        if is_selected:
-            return [230, 57, 70, 250]  # Bright Red for selected
-        return [31, 69, 130, 180]      # Theme Blue for others
+    if highlight_labels is None:
+        highlight_labels = [label]
 
-    def get_radius(row):
-        is_selected = (
-            abs(row['lat'] - latitude) < 1e-6 and
-            abs(row['lon'] - longitude) < 1e-6 and
-            row['name'] == label
-        )
-        return 60 if is_selected else 40
+    # Filter points to focus on highlighted ones for initial center/zoom
+    focus_df = df[df['name'].isin(highlight_labels)] if highlight_labels else df
+    if focus_df.empty:
+        focus_df = df
 
-    df['color'] = df.apply(get_color, axis=1)
-    df['radius'] = df.apply(get_radius, axis=1)
+    # Dynamic center calculation
+    if latitude is None or longitude is None:
+        if not focus_df.empty:
+            latitude = focus_df['lat'].mean()
+            longitude = focus_df['lon'].mean()
+        else:
+            latitude, longitude = 33.7, -116.3 # Fallback center
+    
+    # Heuristic for zoom if not provided
+    if zoom is None:
+        if len(focus_df) > 1:
+            lat_span = focus_df['lat'].max() - focus_df['lat'].min()
+            lon_span = focus_df['lon'].max() - focus_df['lon'].min()
+            span = max(lat_span, lon_span)
+            
+            if span > 0.1: zoom = 11
+            elif span > 0.05: zoom = 12
+            elif span > 0.02: zoom = 13
+            elif span > 0.005: zoom = 14
+            else: zoom = 15
+        else:
+            zoom = 15
+
+    # Define tiles and attribution
+    if use_satellite:
+        tiles = "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
+        attr = "Esri World Imagery"
+    else:
+        # Carto Voyager tiles (via cartodb.com)
+        tiles = "https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"
+        attr = "&copy; <a href=\"https://www.openstreetmap.org/copyright\">OpenStreetMap</a> contributors &copy; <a href=\"https://carto.com/attributions\">CARTO</a>"
+
+    # Create the Folium Map
+    m = folium.Map(
+        location=[latitude, longitude],
+        zoom_start=zoom,
+        tiles=tiles,
+        attr=attr,
+        height=height
+    )
+
+    # Add markers for all intersections
+    for _, row in df.iterrows():
+        is_highlighted = row['name'] in highlight_labels
+        is_primary = row['name'] == label
+        
+        color = '#E63946' if is_highlighted else '#1F4582' # Red vs Blue
+        radius = 12 if is_primary else 10 if is_highlighted else 6
+        
+        folium.CircleMarker(
+            location=[row['lat'], row['lon']],
+            radius=radius,
+            color=color,
+            weight=2,
+            fill=True,
+            fill_color=color,
+            fill_opacity=0.7,
+            tooltip=row['name'],
+            popup=folium.Popup(row['name'], parse_html=True)
+        ).add_to(m)
+        
+        # Always visible text labels for highlighted intersections
+        if is_highlighted:
+            label_color = "white" if use_satellite else "#E63946"
+            label_shadow = "1px 1px 2px black" if use_satellite else "none"
+            label_bg = "rgba(0,0,0,0.4)" if use_satellite else "transparent"
+            
+            folium.map.Marker(
+                [row['lat'], row['lon']],
+                icon=folium.DivIcon(
+                    icon_size=(200, 36),
+                    icon_anchor=(100, 42), # Position above marker
+                    html=f"""
+                        <div style="
+                            font-family: sans-serif; 
+                            font-size: 11pt; 
+                            color: {label_color}; 
+                            font-weight: bold; 
+                            text-shadow: {label_shadow};
+                            background: {label_bg};
+                            padding: 2px 5px;
+                            border-radius: 4px;
+                            text-align: center;
+                            pointer-events: none;
+                        ">
+                            {row['name']}
+                        </div>
+                    """
+                )
+            ).add_to(m)
 
     # Special landmark: Indian Wells Tennis Garden
-    landmark_data = pd.DataFrame([{
-        "lat": 33.723664,
-        "lon": -116.305232,
-        "name": "Indian Wells Tennis Garden",
-        "icon": "★"
-    }])
+    folium.Marker(
+        [33.723664, -116.305232],
+        icon=folium.Icon(color='orange', icon='star', prefix='fa'), # Using FontAwesome star
+        tooltip="Indian Wells Tennis Garden",
+        popup="Indian Wells Tennis Garden"
+    ).add_to(m)
 
-    # For the text layer, we show labels for ALL intersections to make it easy to see what's what,
-    # but we will only apply the background box to the selected one to keep it distinguished.
-    # Alternatively, we only show the label for the selected one.
-    # Let's show all labels but maybe make unselected ones smaller/different?
-    # User said: "make sure the dots are distinguished so users know which intersection they are analyzing"
-    # Showing ONLY the selected label is the cleanest way to distinguish.
-    df_labels = df[df['color'].apply(lambda x: x[0] == 230)]
+    # Display Study Period and Intersections KPIs above the map
+    if study_period or intersections:
+        # Build the HTML string without leading indentation to avoid Markdown code block triggers
+        html = f'<div style="background: var(--secondary-background-color); padding: 18px 14px; border-radius: 14px; border: 3px solid #1f4582; margin-bottom: 16px; text-align: center; box-shadow: 0 6px 12px rgba(0,0,0,0.1);">'
+        
+        if study_period:
+            html += f'<div style="font-size: 0.95rem; color: #1f4582; text-transform: uppercase; font-weight: 900; letter-spacing: 2px; margin-bottom: 6px;">Study Period</div>'
+            html += f'<div style="font-size: 1.6rem; font-weight: 900; color: var(--text-color); line-height: 1.2; margin-bottom: {16 if intersections else 0}px; letter-spacing: -0.5px;">{study_period}</div>'
+        
+        if study_period and intersections:
+            html += "<div style='height: 2px; background: #1f4582; opacity: 0.2; margin: 16px 0;'></div>"
+            
+        if intersections:
+            html += f'<div style="font-size: 0.95rem; color: #1f4582; text-transform: uppercase; font-weight: 900; letter-spacing: 2px; margin-bottom: 12px;">Intersections</div>'
+            html += f'<div style="text-align: left; max-height: 200px; overflow-y: auto; padding: 0 5px;">'
+            for item in intersections:
+                # Handle both simple strings and dictionaries for backward compatibility
+                if isinstance(item, dict):
+                    name = item.get("name", "Unknown")
+                    url = item.get("url")
+                else:
+                    name = item
+                    url = None
+                
+                if url:
+                    html += f'<a href="{url}" target="_blank" style="text-decoration: none;">'
+                    html += f'<div style="margin-bottom: 8px; padding: 10px 14px; background: rgba(31, 69, 130, 0.05); border-radius: 8px; font-weight: 700; font-size: 1.1rem; color: #1f4582; border-left: 4px solid #1f4582; line-height: 1.2; transition: all 0.2s; cursor: pointer;" '
+                    html += f'onmouseover="this.style.background=\'rgba(31, 69, 130, 0.1)\'; this.style.transform=\'translateX(2px)\'" '
+                    html += f'onmouseout="this.style.background=\'rgba(31, 69, 130, 0.05)\'; this.style.transform=\'translateX(0)\'">'
+                    html += f'{name}</div></a>'
+                else:
+                    html += f"<div style='margin-bottom: 8px; padding: 10px 14px; background: rgba(31, 69, 130, 0.05); border-radius: 8px; font-weight: 700; font-size: 1.1rem; color: var(--text-color); border-left: 4px solid #1f4582; line-height: 1.2;'>{name}</div>"
+            html += '</div>'
+            
+        html += "</div>"
+        st.markdown(html, unsafe_allow_html=True)
 
-    view_state = pdk.ViewState(
-        latitude=latitude,
-        longitude=longitude,
-        zoom=zoom,
-        pitch=0,
-        bearing=0,
+    # Render Folium in Streamlit
+    st_folium(
+        m,
+        width="100%",
+        height=height,
+        key=f"map-{use_satellite}-{latitude}-{longitude}-{zoom}-{label}",
+        returned_objects=[] # We don't need any data back from the map
     )
 
-    # Base map without requiring a Mapbox token
-    tile_layer = pdk.Layer(
-        "TileLayer",
-        data="https://tile.openstreetmap.org/{z}/{x}/{y}.png",
-        min_zoom=0,
-        max_zoom=19,
-        tile_size=256,
+    # Display Map Legend under the map
+    legend_html = (
+        '<div style="display: flex; flex-direction: column; align-items: center; padding: 12px; background: var(--secondary-background-color); border-radius: 12px; margin-top: 14px; border: 1px solid var(--border-color); box-shadow: 0 2px 4px rgba(0,0,0,0.05);">'
+        '<div style="font-weight: bold; color: var(--text-color); margin-bottom: 10px; border-bottom: 1px solid var(--border-color); width: 100%; text-align: center; padding-bottom: 6px; font-size: 0.9rem;">Map Legend</div>'
+        '<div style="display: flex; justify-content: center; gap: 20px; font-size: 0.85rem; width: 100%;">'
+        '<div style="display: flex; align-items: center; gap: 8px;">'
+        '<span style="height: 12px; width: 12px; background-color: rgb(230, 57, 70); border-radius: 50%; display: inline-block; border: 2px solid white; box-shadow: 0 0 0 1px rgb(230, 57, 70);"></span>'
+        '<span style="font-weight: 600; color: var(--text-color);">Active Intersection(s)</span>'
+        '</div>'
+        '<div style="display: flex; align-items: center; gap: 8px;">'
+        '<span style="height: 12px; width: 12px; background-color: rgb(31, 69, 130); border-radius: 50%; display: inline-block; border: 2px solid white; box-shadow: 0 0 0 1px rgb(31, 69, 130);"></span>'
+        '<span style="font-weight: 600; color: var(--text-color);">Other Intersections</span>'
+        '</div>'
+        '<div style="display: flex; align-items: center; gap: 8px;">'
+        '<span style="font-size: 1.1rem; line-height: 1; color: var(--text-color);">★</span>'
+        '<span style="font-weight: 600; color: var(--text-color);">Tennis Garden</span>'
+        '</div>'
+        '</div>'
+        '</div>'
     )
-
-    point_layer = pdk.Layer(
-        "ScatterplotLayer",
-        data=df,
-        get_position="[lon, lat]",
-        get_radius="radius",
-        get_fill_color="color",
-        pickable=True,
-    )
-
-    text_layer = pdk.Layer(
-        "TextLayer",
-        data=df_labels,
-        get_position="[lon, lat]",
-        get_text="name",
-        get_color=[230, 57, 70, 255],
-        get_size=18,
-        get_alignment_baseline="bottom",
-        get_pixel_offset=[0, -18],
-    )
-
-    landmark_layer = pdk.Layer(
-        "TextLayer",
-        data=landmark_data,
-        get_position="[lon, lat]",
-        get_text="icon",
-        get_size=44,
-        get_color=[255, 215, 0, 255],  # Gold
-        get_alignment_baseline="center",
-        pickable=True,
-    )
-
-    deck = pdk.Deck(
-        initial_view_state=view_state,
-        map_style=None,
-        layers=[tile_layer, point_layer, text_layer, landmark_layer],
-        tooltip={"text": "{name}\n({lat}, {lon})"},
-    )
-
-
-    # Add visual legend for markers above the map
-    st.markdown(
-        """
-        <div style="display: flex; flex-direction: column; align-items: center; padding: 12px; background: var(--secondary-background-color); border-radius: 12px; margin-bottom: 10px; border: 1px solid var(--border-color); box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
-            <div style="font-weight: bold; color: var(--text-color); margin-bottom: 10px; border-bottom: 1px solid var(--border-color); width: 100%; text-align: center; padding-bottom: 6px; font-size: 0.9rem;">Map Legend</div>
-            <div style="display: flex; justify-content: center; gap: 20px; font-size: 0.85rem; width: 100%;">
-                <div style="display: flex; align-items: center; gap: 8px;">
-                    <span style="height: 12px; width: 12px; background-color: rgb(230, 57, 70); border-radius: 50%; display: inline-block; border: 2px solid white; box-shadow: 0 0 0 1px rgb(230, 57, 70);"></span>
-                    <span style="font-weight: 600; color: var(--text-color);">Selected Intersection</span>
-                </div>
-                <div style="display: flex; align-items: center; gap: 8px;">
-                    <span style="height: 12px; width: 12px; background-color: rgb(31, 69, 130); border-radius: 50%; display: inline-block; border: 2px solid white; box-shadow: 0 0 0 1px rgb(31, 69, 130);"></span>
-                    <span style="font-weight: 600; color: var(--text-color);">Other Intersections</span>
-                </div>
-                <div style="display: flex; align-items: center; gap: 8px;">
-                    <span style="font-size: 1.1rem; line-height: 1; color: var(--text-color);">★</span>
-                    <span style="font-weight: 600; color: var(--text-color);">Tennis Garden</span>
-                </div>
-            </div>
-        </div>
-        """,
-        unsafe_allow_html=True
-    )
-
-    st.pydeck_chart(deck, use_container_width=True, height=height)
+    st.markdown(legend_html, unsafe_allow_html=True)

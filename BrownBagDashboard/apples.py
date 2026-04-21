@@ -8,36 +8,36 @@ def _apply_comparison_layout(fig, y_axis_label, tickformat=None):
     Ensures that titles and legends have enough breathing room even at 100% zoom.
     """
     fig.update_layout(
-        font=dict(family="Arial, sans-serif", color="black"),
-        # Increase top margin significantly to prevent crowding
-        margin=dict(t=180, b=50, l=50, r=30),
+        font=dict(family="Arial, sans-serif"),
+        # Increase top margin for title and bottom margin for legend
+        margin=dict(t=130, b=100, l=50, r=30),
         # Position title at the top of the container area
         title=dict(
             y=0.96,
             x=0.02,
             xanchor='left',
             yanchor='top',
-            font=dict(size=18, color="black")
+            font=dict(size=26)
         ),
-        # Anchor legend just above the plot area, but below the title
+        # Anchor legend at the bottom of the plot area to prevent title collision
         legend=dict(
             orientation="h",
-            yanchor="bottom",
-            y=1.02,
+            yanchor="top",
+            y=-0.2,
             xanchor="center",
             x=0.5,
             borderwidth=1,
-            bgcolor="rgba(255, 255, 255, 0.4)",
-            font=dict(color="black")
+            font=dict(size=20),
+            itemsizing='constant'
         ),
         xaxis=dict(
-            title=dict(text="<b>Approach</b>", font=dict(color="black")),
-            tickfont=dict(color="black")
+            title=dict(text="<b>Approach</b>", font=dict(size=24)),
+            tickfont=dict(size=18)
         ),
         yaxis=dict(
-            title=dict(text=f"<b>{y_axis_label}</b>", font=dict(color="black")),
+            title=dict(text=f"<b>{y_axis_label}</b>", font=dict(size=24)),
             tickformat=tickformat,
-            tickfont=dict(color="black")
+            tickfont=dict(size=18)
         ),
         height=550
     )
@@ -131,7 +131,7 @@ def render_apples_tab(registry, load_data_func, get_meta_value_func, direction_m
             ("Delay Range 1", "Average Delay (s)", kpi_col1, False, False, "inverse"),
             ("Arrivals On Green Range 1", "Arrivals On Green", kpi_col2, True, False, "normal"),
             ("Split Failures Range 1", "Split Failures", kpi_col3, True, False, "inverse"),
-            ("Vehicle Samples 1", "Total Vehicles", kpi_col4, False, True, "off")
+            ("Vehicle Samples 1", "Total Vehicles", kpi_col4, False, True, "normal")
         ]
 
         for col_name, label, column, is_pct, is_int, d_color in metrics:
@@ -139,13 +139,29 @@ def render_apples_tab(registry, load_data_func, get_meta_value_func, direction_m
             v2 = df_int2[col_name].iloc[0]
             
             with column:
-                st.metric(
-                    f"{label} ({p2_label})", 
-                    format_val(v2, is_pct, is_int), 
-                    delta=get_delta_str(v1, v2, is_pct),
-                    delta_color=d_color
-                )
-                st.caption(f"{p1_label}: {format_val(v1, is_pct, is_int)}")
+                # Calculate delta for styling
+                diff = v2 - v1 if not (pd.isna(v1) or pd.isna(v2)) else 0
+                delta_str = get_delta_str(v1, v2, is_pct)
+                
+                # Determine color logic consistent with st.metric
+                if delta_str is None or diff == 0:
+                    d_style = "color: gray;"
+                else:
+                    is_positive = diff > 0
+                    if d_color == "normal":
+                        color = "#10b981" if is_positive else "#ef4444" # green vs red
+                    else: # inverse
+                        color = "#ef4444" if is_positive else "#10b981" # red vs green
+                    d_style = f"color: {color}; font-weight: 700;"
+
+                st.markdown(f"""
+<div style="background: var(--secondary-background-color); padding: 15px 5px; border-radius: 12px; border: 2px solid #1f4582; text-align: center; box-shadow: 0 4px 8px rgba(0,0,0,0.05); min-height: 150px; display: flex; flex-direction: column; justify-content: center;">
+    <div style="font-size: 0.8rem; color: #1f4582; text-transform: uppercase; font-weight: 800; letter-spacing: 0.5px; margin-bottom: 8px; line-height: 1.2;">{label}<br><span style="font-size: 0.7rem; opacity: 0.8;">({p2_label})</span></div>
+    <div style="font-size: 1.8rem; font-weight: 900; color: var(--text-color); line-height: 1;">{format_val(v2, is_pct, is_int)}</div>
+    {f'<div style="font-size: 0.9rem; {d_style} margin-top: 5px;">{delta_str}</div>' if delta_str else ''}
+    <div style="font-size: 0.75rem; opacity: 0.6; margin-top: 8px;">{p1_label}: {format_val(v1, is_pct, is_int)}</div>
+</div>
+""", unsafe_allow_html=True)
 
         # Comparative Visualizations
         st.markdown("---")
@@ -182,7 +198,7 @@ def render_apples_tab(registry, load_data_func, get_meta_value_func, direction_m
             )
             _apply_comparison_layout(fig_delay, "Control Delay (seconds)")
             fig_delay.update_traces(
-                textfont_size=12,
+                textfont_size=18,
                 textposition="outside",
                 cliponaxis=False,
                 hovertemplate="<b>Approach:</b> %{x}<br><b>%{fullData.name}:</b> %{y:.1f} seconds<extra></extra>"
@@ -203,7 +219,7 @@ def render_apples_tab(registry, load_data_func, get_meta_value_func, direction_m
             )
             _apply_comparison_layout(fig_aog, "Arrivals On Green (%)", tickformat=".0%")
             fig_aog.update_traces(
-                textfont_size=12,
+                textfont_size=18,
                 textposition="outside",
                 cliponaxis=False,
                 hovertemplate="<b>Approach:</b> %{x}<br><b>%{fullData.name}:</b> %{y:.1%}<extra></extra>"
@@ -225,7 +241,7 @@ def render_apples_tab(registry, load_data_func, get_meta_value_func, direction_m
             )
             _apply_comparison_layout(fig_sf, "Split Failures (%)", tickformat=".0%")
             fig_sf.update_traces(
-                textfont_size=12,
+                textfont_size=18,
                 textposition="outside",
                 cliponaxis=False,
                 hovertemplate="<b>Approach:</b> %{x}<br><b>%{fullData.name}:</b> %{y:.1%}<extra></extra>"
@@ -246,7 +262,7 @@ def render_apples_tab(registry, load_data_func, get_meta_value_func, direction_m
             )
             _apply_comparison_layout(fig_vol, "Total Vehicles")
             fig_vol.update_traces(
-                textfont_size=12,
+                textfont_size=18,
                 textposition="outside",
                 cliponaxis=False,
                 hovertemplate="<b>Approach:</b> %{x}<br><b>%{fullData.name}:</b> %{y:,.0f} vehicles<extra></extra>"
@@ -386,7 +402,7 @@ def render_apples_tab(registry, load_data_func, get_meta_value_func, direction_m
                 elif delta_pct <= -0.005:
                     delta_color = "green" if is_inverse else "red"
                 else:
-                    delta_color = "black"
+                    delta_color = "inherit"
                 
                 # Combine the raw value and the % change
                 combined_label = f"{v2_str}<br><span style='color:{delta_color}'>({delta_str})</span>"
@@ -425,7 +441,7 @@ def render_apples_tab(registry, load_data_func, get_meta_value_func, direction_m
         # Move facet titles up to avoid intersecting with borders
         fig_mov_comp.for_each_annotation(lambda a: a.update(
             text=f"<b>{a.text.split('=')[-1]}</b>", 
-            font=dict(size=14, color="black"),
+            font=dict(size=18),
             y=a.y + 0.02 # Bump titles up slightly (reduced from 0.04 to give more headroom)
         ))
         
@@ -440,7 +456,7 @@ def render_apples_tab(registry, load_data_func, get_meta_value_func, direction_m
 
         # Layout refinement (Overrides generic layout for faceted movement chart)
         fig_mov_comp.update_layout(
-            margin=dict(t=180, b=50, l=60, r=40),
+            margin=dict(t=130, b=100, l=60, r=40),
             title=dict(
                 y=0.96,
                 x=0.02,
@@ -449,12 +465,13 @@ def render_apples_tab(registry, load_data_func, get_meta_value_func, direction_m
             ),
             legend=dict(
                 orientation="h", 
-                yanchor="bottom", 
-                y=1.02, # Positioned just above plot
+                yanchor="top", 
+                y=-0.15, # Moved to bottom to prevent collision
                 xanchor="center", 
                 x=0.5, 
                 title=None,
-                font=dict(color="black")
+                font=dict(size=20),
+                itemsizing='constant'
             ),
             hovermode="x unified",
             uniformtext_minsize=7,
@@ -468,23 +485,20 @@ def render_apples_tab(registry, load_data_func, get_meta_value_func, direction_m
             title=None, 
             showline=True, 
             linewidth=1, 
-            linecolor='lightgrey', 
             mirror=True,
             showticklabels=True, # Force labels on all subplots
-            tickfont=dict(color="black")
+            tickfont=dict(size=14)
         )
         fig_mov_comp.update_yaxes(
             showline=True, 
             linewidth=1, 
-            linecolor='lightgrey', 
             mirror=True,
-            tickfont=dict(color="black"),
-            title_font=dict(color="black")
+            tickfont=dict(size=14),
+            title_font=dict(size=18)
         )
         
         fig_mov_comp.update_traces(
-            textfont_size=10,
-            textfont_color="black",
+            textfont_size=14,
             textposition="outside",
             cliponaxis=False,
             hovertemplate="<b>%{fullData.name}:</b> %{y" + mov_hover_fmt + "}" + mov_unit + "<extra></extra>"
