@@ -1030,7 +1030,6 @@ div[data-testid="column"]:nth-child(2) > div {
                             trendline="ols",
                             trendline_scope="overall",
                             title=f"<b>{x_label} vs. {y_label}</b><br><sup>Corridor Regression Analysis</sup>",
-                            text="Intersection",
                             hover_name="Intersection",
                             labels={
                                 x_col: f"← Independent Variable: {x_label}",
@@ -1039,22 +1038,21 @@ div[data-testid="column"]:nth-child(2) > div {
                             hover_data=["Intersection", "Approach Full"]
                         )
                         fig_reg.update_layout(
-                            title_font_size=26,
+                            title_font_size=20,
                             xaxis=dict(
-                                title=dict(font=dict(size=22)),
-                                tickfont=dict(size=18)
+                                title=dict(font=dict(size=16)),
+                                tickfont=dict(size=12)
                             ),
                             yaxis=dict(
-                                title=dict(font=dict(size=22)),
-                                tickfont=dict(size=18)
+                                title=dict(font=dict(size=16)),
+                                tickfont=dict(size=12)
                             ),
                             legend=dict(
-                                title=dict(text="<b>Intersection</b>", font=dict(size=16)),
-                                font=dict(size=14),
+                                title=dict(text="<b>Intersection</b>", font=dict(size=14)),
+                                font=dict(size=12),
                                 itemsizing='constant'
                             )
                         )
-                        fig_reg.update_traces(textposition='top center', textfont_size=12)
                         has_trendline = True
 
                         # Extract regression results for KPIs
@@ -1075,7 +1073,6 @@ div[data-testid="column"]:nth-child(2) > div {
                             color="Intersection",
                             symbol="Approach Full",
                             title=f"<b>{x_label} vs. {y_label}</b><br><sup>Corridor Data (Trendline Unavailable)</sup>",
-                            text="Intersection",
                             labels={
                                 x_col: f"← Independent Variable: {x_label}",
                                 y_col: f"Dependent Variable: {y_label} →"
@@ -1083,11 +1080,10 @@ div[data-testid="column"]:nth-child(2) > div {
                             hover_data=["Intersection", "Approach Full"]
                         )
                         fig_reg.update_layout(
-                            title_font_size=26,
-                            xaxis=dict(title=dict(font=dict(size=18))),
-                            yaxis=dict(title=dict(font=dict(size=18)))
+                            title_font_size=20,
+                            xaxis=dict(title=dict(font=dict(size=16))),
+                            yaxis=dict(title=dict(font=dict(size=16)))
                         )
-                        fig_reg.update_traces(textposition='top center', textfont_size=9)
                         has_trendline = False
                         r_squared, slope, intercept = 0, 0, 0
                     except Exception as e:
@@ -1099,7 +1095,6 @@ div[data-testid="column"]:nth-child(2) > div {
                             color="Intersection",
                             symbol="Approach Full",
                             title=f"<b>{x_label} vs. {y_label}</b><br><sup>Corridor Data</sup>",
-                            text="Intersection",
                             labels={
                                 x_col: f"← Independent Variable: {x_label}",
                                 y_col: f"Dependent Variable: {y_label} →"
@@ -1107,11 +1102,10 @@ div[data-testid="column"]:nth-child(2) > div {
                             hover_data=["Intersection", "Approach Full"]
                         )
                         fig_reg.update_layout(
-                            title_font_size=26,
-                            xaxis=dict(title=dict(font=dict(size=18))),
-                            yaxis=dict(title=dict(font=dict(size=18)))
+                            title_font_size=20,
+                            xaxis=dict(title=dict(font=dict(size=16))),
+                            yaxis=dict(title=dict(font=dict(size=16)))
                         )
-                        fig_reg.update_traces(textposition='top center', textfont_size=9)
                         has_trendline = False
                         r_squared, slope, intercept = 0, 0, 0
 
@@ -1167,19 +1161,22 @@ div[data-testid="column"]:nth-child(2) > div {
 
                     # Update layout for better legend and fonts
                     fig_reg.update_layout(
+                        margin=dict(l=60, r=20, t=60, b=60),
+                        title_font_size=20,
                         legend=dict(
-                            title=dict(text="<b>Intersection</b>", font=dict(size=22)),
-                            font=dict(size=18),
+                            title=dict(text="<b>Intersection</b>", font=dict(size=14)),
+                            font=dict(size=12),
                             itemsizing='constant'
                         ),
                         font=dict(family="Arial, sans-serif"),
                         xaxis=dict(
-                            title=dict(font=dict(size=22)),
-                            tickfont=dict(size=18)
+                            title=dict(font=dict(size=16)),
+                            tickfont=dict(size=12)
                         ),
                         yaxis=dict(
-                            title=dict(font=dict(size=22)),
-                            tickfont=dict(size=18)
+                            title=dict(font=dict(size=16)),
+                            tickfont=dict(size=12),
+                            title_standoff=15
                         )
                     )
 
