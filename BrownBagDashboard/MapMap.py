@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import folium
+from folium.plugins import Fullscreen
 from streamlit_folium import st_folium
 
 
@@ -16,6 +17,7 @@ def render_map(
     highlight_labels: list = None,
     study_period: str = None,
     intersections: list = None,
+    segments: pd.DataFrame = None,
 ):
     """Render an interactive map centered on the given coordinates using Folium.
 
@@ -85,12 +87,62 @@ def render_map(
 
     # Create the Folium Map
     m = folium.Map(
+        control_scale=True,
         location=[latitude, longitude],
         zoom_start=zoom,
         tiles=tiles,
         attr=attr,
         height=height
     )
+    Fullscreen().add_to(m)
+
+    # Add segment polylines if provided
+    if segments is not None and not segments.empty:
+        for subseg, group in segments.groupby("Subsegment", sort=False):
+            # Get from/to labels
+            from_label = group["From Intersection"].iloc[0]
+            to_label = group["To Intersection"].iloc[0]
+            
+            # Lookup coordinates in the registry (df)
+            from_pt = df[df['name'] == from_label]
+            to_pt = df[df['name'] == to_label]
+            
+            if not from_pt.empty and not to_pt.empty:
+                from_coords = [from_pt['lat'].iloc[0], from_pt['lon'].iloc[0]]
+                to_coords = [to_pt['lat'].iloc[0], to_pt['lon'].iloc[0]]
+                
+                # Prepare tooltip content
+                two_way_adt = group["Two-Way Segment ADT"].iloc[0]
+                date_range = group["DateRange"].iloc[0]
+                
+                # Build direction info
+                dir_info = ""
+                for i, (_, row) in enumerate(group.iterrows()):
+                    dir_letter = chr(65 + i) # A, B, ...
+                    dir_label = row["Direction Label"]
+                    adt = row["Directional ADT"]
+                    dir_info += f"<b>Direction {dir_letter}:</b> {dir_label} = {adt:,.0f} vehicles/day<br>"
+                
+                tooltip_html = f"""
+                    <div style="font-family: sans-serif; font-size: 10.5pt; min-width: 300px; padding: 5px;">
+                        <div style="font-weight: bold; border-bottom: 2px solid #1f4582; margin-bottom: 8px; padding-bottom: 3px; color: #1f4582;">
+                            {subseg}
+                        </div>
+                        <div style="margin-bottom: 4px;"><b>Two-Way Segment ADT:</b> {two_way_adt:,.0f} vehicles/day</div>
+                        <div style="margin-bottom: 8px; font-size: 9.5pt;">{dir_info}</div>
+                        <div style="font-size: 9pt; opacity: 0.8; border-top: 1px solid #eee; padding-top: 4px;">
+                            <b>Study Period:</b> {date_range}
+                        </div>
+                    </div>
+                """
+                
+                folium.PolyLine(
+                    locations=[from_coords, to_coords],
+                    color='#1f4582',
+                    weight=10,
+                    opacity=0.4,
+                    tooltip=folium.Tooltip(tooltip_html, sticky=True)
+                ).add_to(m)
 
     # Add markers for all intersections
     for _, row in df.iterrows():
@@ -212,6 +264,10 @@ def render_map(
         '<div style="display: flex; align-items: center; gap: 8px;">'
         '<span style="font-size: 1.1rem; line-height: 1; color: var(--text-color);">★</span>'
         '<span style="font-weight: 600; color: var(--text-color);">Tennis Garden</span>'
+        '</div>'
+        '<div style="display: flex; align-items: center; gap: 8px;">'
+        '<span style="height: 4px; width: 20px; background-color: rgba(31, 69, 130, 0.4); display: inline-block; border-radius: 2px;"></span>'
+        '<span style="font-weight: 600; color: var(--text-color);">Segment ADT (Hover)</span>'
         '</div>'
         '</div>'
         '</div>'

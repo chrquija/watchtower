@@ -6,7 +6,7 @@ import io
 # (no local file access or mock generation needed)
 from MapMap import render_map
 from apples import render_apples_tab
-from adt import ADT_REGISTRY, render_adt_tab, get_adt_export_data
+from adt import ADT_REGISTRY, render_adt_tab, get_adt_export_data, get_segment_adt_dataframe, SEGMENT_REGISTRY
 # (no local file access or mock generation needed)
 
 # Set page configuration
@@ -307,7 +307,7 @@ def main():
         st.sidebar.markdown("## ADT Settings")
         all_corridors = sorted(list(set([c for entry in ADT_REGISTRY for c in entry["corridors"]])))
         selected_corridor = st.sidebar.selectbox("Select Corridor", options=all_corridors)
-        adt_sort_order = st.sidebar.selectbox("Sort Intersections By", options=["Registry Order", "ADT (High to Low)", "ADT (Low to High)"])
+        adt_sort_order = st.sidebar.selectbox("Sort Segments By", options=["Registry Order", "ADT (High to Low)", "ADT (Low to High)"])
         adt_show_raw = st.sidebar.checkbox("Show Raw Data Table", value=False)
         
         # We still need a 'selected' intersection for the rest of the app scaffolding
@@ -610,6 +610,16 @@ div[data-testid="column"]:nth-child(2) > div {
             else:
                 corridor_study_period_str = corridor_date_range
 
+            # Fetch Segment ADT Data for the map
+            df_segments = get_segment_adt_dataframe(
+                selected_corridor=selected_corridor,
+                segment_registry=SEGMENT_REGISTRY,
+                adt_registry=ADT_REGISTRY,
+                load_data_func=load_data,
+                get_meta_value_func=get_meta_value,
+                direction_map=DIRECTION_MAP
+            )
+
             corridor_labels = [entry["label"] for entry in corridor_entries]
             render_map(
                 height=900,
@@ -618,7 +628,8 @@ div[data-testid="column"]:nth-child(2) > div {
                 use_satellite=use_satellite,
                 highlight_labels=corridor_labels,
                 study_period=corridor_study_period_str,
-                intersections=intersections_data
+                intersections=intersections_data,
+                segments=df_segments
             )
 
     # All analytics content lives inside the left column
