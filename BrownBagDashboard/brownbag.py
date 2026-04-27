@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
+import plotly.io as pio
 import io
 # (no local file access or mock generation needed)
 from MapMap import render_map
@@ -263,6 +264,28 @@ def load_all_intersections_data(registry):
 # --- Main Application ---
 
 def main():
+    # Global Plotly configuration for all tooltips
+    pio.templates.default = "plotly"
+    pio.templates[pio.templates.default].layout.hoverlabel.font.size = 18
+    
+    # Global CSS for Streamlit and Folium tooltips
+    st.markdown("""
+        <style>
+        /* Streamlit tooltip font size */
+        div[data-baseweb="tooltip"] {
+            font-size: 18px !important;
+        }
+        /* Folium tooltip font size (for those in the main DOM) */
+        .leaflet-tooltip {
+            font-size: 18px !important;
+        }
+        /* Extra Streamlit tooltip target */
+        .stTooltip {
+            font-size: 18px !important;
+        }
+        </style>
+    """, unsafe_allow_html=True)
+
     # 0. Sidebar: Analysis Mode selector
     st.sidebar.markdown("## Analysis Mode")
     analysis_mode = st.sidebar.radio(
@@ -631,6 +654,86 @@ div[data-testid="column"]:nth-child(2) > div {
                 intersections=intersections_data,
                 segments=df_segments
             )
+
+            # --- ADT Data Tables in Right Rail ---
+            st.divider()
+            st.markdown("### Corridor Data Tables")
+            table_choice = st.selectbox(
+                "Flip through chart data:",
+                options=[
+                    "MidPoint ADT By Subsegment",
+                    "Directional ADT Comparison",
+                    "Turning Movement Share"
+                ]
+            )
+
+            if table_choice == "MidPoint ADT By Subsegment":
+                if not df_segments.empty:
+                    st.dataframe(
+                        df_segments[["Subsegment", "Direction Label", "Directional ADT", "Two-Way Segment ADT", "DateRange"]]
+                        .style.format({
+                            "Directional ADT": "{:,.0f}",
+                            "Two-Way Segment ADT": "{:,.0f}"
+                        }),
+                        use_container_width=True,
+                        hide_index=True
+                    )
+                else:
+                    st.info("No subsegment data available.")
+
+            elif table_choice == "Directional ADT Comparison":
+                # Need to load/compute directional ADT for all intersections
+                all_approach_adt = []
+                for entry in corridor_entries:
+                    data = load_data(entry["url"])
+                    if data:
+                        df_app_local = data[2]
+                        df_meta_local = data[0]
+                        # Helper from adt.py is not easily accessible here without import
+                        # but we have DIRECTION_MAP and get_meta_value
+                        from adt import compute_approach_adt
+                        app_adt = compute_approach_adt(df_app_local, df_meta_local, DIRECTION_MAP, get_meta_value)
+                        app_adt["Intersection"] = entry["label"]
+                        all_approach_adt.append(app_adt)
+                
+                if all_approach_adt:
+                    df_dir_all = pd.concat(all_approach_adt, ignore_index=True)
+                    valid_dirs = ["N", "S", "E", "W", "NB", "SB", "EB", "WB", "NE", "NW", "SE", "SW"]
+                    df_dir_all = df_dir_all[df_dir_all["Approach"].isin(valid_dirs)]
+                    st.dataframe(
+                        df_dir_all[["Intersection", "Approach Full", "ADT", "DateRange"]]
+                        .style.format({"ADT": "{:,.0f}"}),
+                        use_container_width=True,
+                        hide_index=True
+                    )
+                else:
+                    st.info("No directional ADT data available.")
+
+            elif table_choice == "Turning Movement Share":
+                all_mov_shares = []
+                for entry in corridor_entries:
+                    data = load_data(entry["url"])
+                    if data:
+                        df_mov_local = data[3]
+                        df_meta_local = data[0]
+                        start_l = get_meta_value(df_meta_local, "Start Date")
+                        end_l = get_meta_value(df_meta_local, "End Date")
+                        from adt import compute_movement_share
+                        mov_share = compute_movement_share(df_mov_local)
+                        mov_share["Intersection"] = entry["label"]
+                        mov_share["DateRange"] = f"{start_l} to {end_l}"
+                        all_mov_shares.append(mov_share)
+                
+                if all_mov_shares:
+                    df_mov_all = pd.concat(all_mov_shares, ignore_index=True)
+                    st.dataframe(
+                        df_mov_all[["Intersection", "Movement", "Share", "DateRange"]]
+                        .style.format({"Share": "{:.1%}"}),
+                        use_container_width=True,
+                        hide_index=True
+                    )
+                else:
+                    st.info("No movement share data available.")
 
     # All analytics content lives inside the left column
     with left_col:

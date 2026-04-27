@@ -96,6 +96,16 @@ def render_map(
     )
     Fullscreen().add_to(m)
 
+    # Inject CSS into Folium map to affect tooltips inside its iframe
+    m.get_root().header.add_child(folium.Element("""
+        <style>
+        .leaflet-tooltip {
+            font-size: 18px !important;
+            font-family: sans-serif !important;
+        }
+        </style>
+    """))
+
     # Add segment polylines if provided
     if segments is not None and not segments.empty:
         for subseg, group in segments.groupby("Subsegment", sort=False):
@@ -124,13 +134,13 @@ def render_map(
                     dir_info += f"<b>Direction {dir_letter}:</b> {dir_label} = {adt:,.0f} vehicles/day<br>"
                 
                 tooltip_html = f"""
-                    <div style="font-family: sans-serif; font-size: 10.5pt; min-width: 300px; padding: 5px;">
+                    <div style="font-family: sans-serif; font-size: 14pt; min-width: 300px; padding: 5px;">
                         <div style="font-weight: bold; border-bottom: 2px solid #1f4582; margin-bottom: 8px; padding-bottom: 3px; color: #1f4582;">
                             {subseg}
                         </div>
                         <div style="margin-bottom: 4px;"><b>Two-Way Segment ADT:</b> {two_way_adt:,.0f} vehicles/day</div>
-                        <div style="margin-bottom: 8px; font-size: 9.5pt;">{dir_info}</div>
-                        <div style="font-size: 9pt; opacity: 0.8; border-top: 1px solid #eee; padding-top: 4px;">
+                        <div style="margin-bottom: 8px; font-size: 12pt;">{dir_info}</div>
+                        <div style="font-size: 11pt; opacity: 0.8; border-top: 1px solid #eee; padding-top: 4px;">
                             <b>Study Period:</b> {date_range}
                         </div>
                     </div>

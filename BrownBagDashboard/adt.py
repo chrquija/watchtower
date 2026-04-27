@@ -2,6 +2,7 @@ import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
+import re
 from datetime import datetime
 
 DIRECTION_MAP = {
@@ -14,6 +15,21 @@ DIRECTION_MAP = {
     "NE": "Northeastbound",
     "SW": "Southwestbound"
 }
+
+def clean_label(label):
+    """
+    Expands common abbreviations in labels (St, Ave, etc.) for better readability,
+    ensuring we don't double up (e.g., Streetreet).
+    """
+    if not label:
+        return label
+    # Use word boundaries \b to avoid partial replacements like "Driveive" or "Avenuenue"
+    label = re.sub(r'\bSt\b', 'Street', label, flags=re.IGNORECASE)
+    label = re.sub(r'\bAve\b', 'Avenue', label, flags=re.IGNORECASE)
+    label = re.sub(r'\bBlvd\b', 'Boulevard', label, flags=re.IGNORECASE)
+    label = re.sub(r'\bDr\b', 'Drive', label, flags=re.IGNORECASE)
+    label = re.sub(r'\bRd\b', 'Road', label, flags=re.IGNORECASE)
+    return label
 
 # --- ADT REGISTRY ---
 # Each entry contains:
@@ -582,6 +598,15 @@ def render_adt_tab(selected_corridor, adt_registry, load_data_func, get_meta_val
         # --- UI Improvement 1: Subsegment Filter ---
         unique_subsegments = df_segments.sort_values(by="SegmentOrder")["Subsegment"].unique().tolist()
         
+        # Create a stable color map for Direction Labels based on the full dataset
+        # to ensure colors don't change when filtering subsegments.
+        all_direction_labels = sorted(df_segments["Direction Label"].unique().tolist())
+        prism_colors = px.colors.qualitative.Prism
+        direction_label_color_map = {
+            label: prism_colors[i % len(prism_colors)] 
+            for i, label in enumerate(all_direction_labels)
+        }
+        
         # Determine filter default and options
         filter_options = ["All subsegments"] + unique_subsegments
         
@@ -610,7 +635,23 @@ def render_adt_tab(selected_corridor, adt_registry, load_data_func, get_meta_val
                 plot_subsegments = plot_df.sort_values(by="Two-Way Segment ADT", ascending=True)["Subsegment"].unique().tolist()
 
         # --- UI Improvement 4: Rename Chart Title ---
-        title1 = f"<b>{selected_corridor}</b><br><sup>Midpoint ADT by Subsegment | {date_range_str}</sup>"
+        if selected_subseg != "All subsegments":
+            # Extract corridor base name (e.g., "Highway 111")
+            corridor_base = selected_corridor.split(" (")[0]
+            
+            # Clean up the subsegment name for the title
+            subseg_title_parts = []
+            for p in selected_subseg.split(" ↔ "):
+                # Remove "Corridor & " prefix if present to shorten
+                clean_p = p.replace(f"{corridor_base} & ", "")
+                # Expand abbreviations for better readability
+                clean_p = clean_label(clean_p)
+                subseg_title_parts.append(clean_p)
+            
+            title1_main = f"{corridor_base} ({' -> '.join(subseg_title_parts)})"
+            title1 = f"<b>{title1_main}</b><br><sup>Midpoint ADT by Subsegment | {date_range_str}</sup>"
+        else:
+            title1 = f"<b>{selected_corridor}</b><br><sup>Midpoint ADT by Subsegment | {date_range_str}</sup>"
         
         # --- UI Improvement 2: Improve Layout for Crowded Corridors ---
         # Dynamically adjust height and margins based on number of subsegments
@@ -627,7 +668,7 @@ def render_adt_tab(selected_corridor, adt_registry, load_data_func, get_meta_val
             title=title1,
             text="Directional ADT",
             category_orders={"Subsegment": plot_subsegments},
-            color_discrete_sequence=px.colors.qualitative.Prism,
+            color_discrete_map=direction_label_color_map,
             height=chart_height,
             custom_data=[
                 "Direction Label", "From Intersection", "To Intersection", 
@@ -637,7 +678,7 @@ def render_adt_tab(selected_corridor, adt_registry, load_data_func, get_meta_val
         )
 
         fig1.update_traces(
-            texttemplate='%{text:,.0f}',
+            texttemplate='%{text:,.0f} vehicles/day',
             textposition='outside',
             textfont_size=20,
             hovertemplate=(
@@ -680,7 +721,7 @@ def render_adt_tab(selected_corridor, adt_registry, load_data_func, get_meta_val
             title_font_size=34,
             xaxis_title_font_size=26,
             yaxis_title_font_size=26,
-            xaxis_tickfont_size=18 if num_subsegments <= 3 else 16,
+            xaxis_tickfont_size=18,
             yaxis_tickfont_size=18,
             xaxis_title="", 
             yaxis_title="Daily Vehicles (ADT)",
@@ -692,7 +733,7 @@ def render_adt_tab(selected_corridor, adt_registry, load_data_func, get_meta_val
                 y=-0.2, 
                 xanchor="center", 
                 x=0.5,
-                font=dict(size=16),
+                font=dict(size=20),
                 itemsizing='constant'
             ),
             annotations=annotations
@@ -701,24 +742,61 @@ def render_adt_tab(selected_corridor, adt_registry, load_data_func, get_meta_val
     
     # 2. Directional ADT Comparison (Grouped Bar Chart)
     st.divider()
-    title2 = f"<b>{selected_corridor}</b><br><sup>Directional ADT Comparison | {date_range_str}</sup>"
+    
     # Filter to main 4 directions + diagonals
     valid_dirs = ["N", "S", "E", "W", "NB", "SB", "EB", "WB", "NE", "NW", "SE", "SW"]
     df_dir = df_all_app[df_all_app["Approach"].isin(valid_dirs)]
+
+    # --- UI Improvement: Intersection Filter ---
+    unique_intersections = sorted(df_dir["Intersection"].unique().tolist())
+    if sort_by == "Registry Order":
+        # Keep registry order for the filter as well
+        unique_intersections = [e["label"] for e in corridor_entries if e["label"] in df_dir["Intersection"].values]
+    elif sort_by == "ADT (High to Low)":
+        unique_intersections = df_dir.groupby("Intersection")["ADT"].max().sort_values(ascending=False).index.tolist()
+    elif sort_by == "ADT (Low to High)":
+        unique_intersections = df_dir.groupby("Intersection")["ADT"].max().sort_values(ascending=True).index.tolist()
+
+    filter_int_options = ["All Intersections"] + unique_intersections
+    
+    filter_int_col1, filter_int_col2 = st.columns([1, 3])
+    with filter_int_col1:
+        selected_int = st.selectbox(
+            "Filter by Intersection:",
+            options=filter_int_options,
+            index=0,
+            key=f"int_filter_{selected_corridor}"
+        )
+
+    # Filter the dataframe for the chart
+    if selected_int != "All Intersections":
+        plot_df_dir = df_dir[df_dir["Intersection"] == selected_int].copy()
+        plot_intersections = [selected_int]
+    else:
+        plot_df_dir = df_dir.copy()
+        plot_intersections = unique_intersections
+
+    if selected_int != "All Intersections":
+        # Clean up intersection name
+        clean_int = clean_label(selected_int)
+        title2 = f"<b>{clean_int}</b><br><sup>Directional ADT Comparison | {date_range_str}</sup>"
+    else:
+        title2 = f"<b>{selected_corridor}</b><br><sup>Directional ADT Comparison | {date_range_str}</sup>"
+    
     fig2 = px.bar(
-        df_dir,
+        plot_df_dir,
         x="Intersection",
         y="ADT",
         color="Approach Full",
         barmode="group",
         title=title2,
         text="ADT",
-        category_orders={"Intersection": sort_order},
+        category_orders={"Intersection": plot_intersections},
         color_discrete_map=direction_colors,
         custom_data=["Approach Full", "Vehicle Samples 1", "days", "DateRange"]
     )
     fig2.update_traces(
-        texttemplate='%{text:,.0f}', 
+        texttemplate='%{text:,.0f} vehicles/day', 
         textposition='outside',
         textfont_size=20,
         hovertemplate="<b>Intersection:</b> %{x}<br><b>Approach:</b> %{customdata[0]}<br><b>ADT:</b> %{y:,.0f} vehicles/day<br><b>Total Period Volume:</b> %{customdata[1]:,.0f} vehicles<br><b>Days in Study Period:</b> %{customdata[2]}<br><b>Study Period:</b> %{customdata[3]}<extra></extra>"
@@ -730,8 +808,8 @@ def render_adt_tab(selected_corridor, adt_registry, load_data_func, get_meta_val
         xaxis_tickfont_size=18,
         yaxis_tickfont_size=18,
         xaxis_title="", 
-        yaxis_title="Daily Vehicles",
-        yaxis_range=[0, df_dir["ADT"].max() * 1.15],
+        yaxis_title="Vehicles Per Day",
+        yaxis_range=[0, plot_df_dir["ADT"].max() * 1.15 if not plot_df_dir.empty else 100],
         # Added margin and moved legend to bottom to prevent overlap with title
         margin=dict(t=150, b=120),
         legend=dict(
@@ -748,19 +826,37 @@ def render_adt_tab(selected_corridor, adt_registry, load_data_func, get_meta_val
     
     # 3. Turning Movement Share (Stacked Bar Chart)
     st.divider()
-    title3 = f"<b>{selected_corridor}</b><br><sup>Turning Movement Share | {date_range_str}</sup>"
     
+    # --- UI Improvement: Intersection Filter (Sharing with Directional ADT if preferred, but separate for now) ---
+    # We can use the same selected_int or a separate one. User asked for filter for directional adt comparison graph.
+    # Usually, it's better to have individual filters for charts if they are scrolled far apart, 
+    # but here they are likely close. Let's add one for Movement Share too for consistency if it makes sense.
+    # Actually, the user ONLY asked for the directional adt comparison graph.
+    
+    if selected_int != "All Intersections":
+        # Use same cleaned intersection name for consistency
+        clean_int = clean_label(selected_int)
+        title3 = f"<b>{clean_int}</b><br><sup>Turning Movement Share | {date_range_str}</sup>"
+    else:
+        title3 = f"<b>{selected_corridor}</b><br><sup>Turning Movement Share | {date_range_str}</sup>"
+    
+    # Apply filter to Movement Share as well for consistent UI
+    if selected_int != "All Intersections":
+        plot_df_mov = df_all_mov[df_all_mov["Intersection"] == selected_int].copy()
+    else:
+        plot_df_mov = df_all_mov.copy()
+
     # Label logic: only show if share >= 8%
-    df_all_mov["Label"] = df_all_mov["Share"].apply(lambda x: f"{x:.1%}" if x >= 0.08 else "")
+    plot_df_mov["Label"] = plot_df_mov["Share"].apply(lambda x: f"{x:.1%}" if x >= 0.08 else "")
     
     fig3 = px.bar(
-        df_all_mov,
+        plot_df_mov,
         x="Intersection",
         y="Share",
         color="Movement",
         title=title3,
         text="Label",
-        category_orders={"Intersection": sort_order},
+        category_orders={"Intersection": plot_intersections},
         labels={"Share": "Movement Share"},
         color_discrete_sequence=px.colors.qualitative.Safe,
         custom_data=["Movement", "Vehicle Samples 1", "Intersection Total Volume", "DateRange"]
@@ -795,33 +891,4 @@ def render_adt_tab(selected_corridor, adt_registry, load_data_func, get_meta_val
     st.caption("Movement share is calculated from total intersection volume, so each bar sums to 100%.")
     
     # --- Summary Tables ---
-    if show_raw:
-        st.divider()
-        st.subheader("Two-Way ADT: Raw Data")
-        st.dataframe(
-            df_summary[["Intersection", "Roadway", "Approaches", "Two-Way ADT", "DateRange"]]
-            .sort_values(["Intersection", "Roadway"])
-            .style.format({"Two-Way ADT": "{:,.0f}"}),
-            use_container_width=True,
-            hide_index=True
-        )
-        
-        st.subheader("Two-Way ADT: Roadway Summary")
-        roadway_summary = df_summary.groupby("Roadway")["Two-Way ADT"].agg(
-            Average_ADT="mean",
-            Max_ADT="max",
-            Min_ADT="min",
-            Intersections="count"
-        ).reset_index()
-        
-        roadway_summary.columns = ["Roadway", "Average ADT", "Max ADT", "Min ADT", "# Intersections"]
-        
-        st.dataframe(
-            roadway_summary.style.format({
-                "Average ADT": "{:,.0f}",
-                "Max ADT": "{:,.0f}",
-                "Min ADT": "{:,.0f}"
-            }),
-            use_container_width=True,
-            hide_index=True
-        )
+    # (Removed raw data and roadway summary tables per user request)

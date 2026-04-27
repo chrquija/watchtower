@@ -9,6 +9,9 @@ def _apply_comparison_layout(fig, y_axis_label, tickformat=None):
     """
     fig.update_layout(
         font=dict(family="Arial, sans-serif"),
+        hoverlabel=dict(
+            font_size=18,
+        ),
         # Increase top margin for title and bottom margin for legend
         margin=dict(t=130, b=100, l=50, r=30),
         # Position title at the top of the container area
