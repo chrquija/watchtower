@@ -4,7 +4,4 @@ flask-caching==2.4.0
 flask-login==0.6.3
 psycopg2-binary==2.9.9
 gunicorn==23.0.0
-pandas>=2.2.0
-plotly>=6.0.0
-rpds-py>=0.25.0
-jsonschema>=4.20.0
+werkzeug==3.1.3
