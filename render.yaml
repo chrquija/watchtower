@@ -1,0 +1,30 @@
+services:
+  - type: web
+    name: watchtower-portal
+    runtime: python
+    buildCommand: pip install -r watchtower/requirements.txt
+    startCommand: gunicorn watchtower.app:app
+    envVars:
+      - key: SECRET_KEY
+        generateValue: true
+      - key: PYTHON_VERSION
+        value: 3.12.3
+      - key: CARGO_HOME
+        value: /opt/render/project/src/.cargo
+      - key: PYTHONPATH
+        value: .
+    disk:
+      name: watchtower-data
+      mountPath: /opt/render/project/src/watchtower/uploads
+      sizeGB: 1
+
+  - type: web
+    name: brownbag-dashboard
+    runtime: python
+    buildCommand: pip install -r BrownBagDashboard/requirements.txt
+    startCommand: streamlit run BrownBagDashboard/adt.py --server.port $PORT
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.3
+      - key: CARGO_HOME
+        value: /opt/render/project/src/.cargo

@@ -1,0 +1,1065 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Watchtower — Advantec Consulting Engineers</title>
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet">
+    <style>
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+        :root {
+            --bg: #f4f5f7;
+            --surface: #ffffff;
+            --border: #e2e6ec;
+            --border-light: #eef1f5;
+            --text: #1e2d40;
+            --text-secondary: #5a6a7e;
+            --text-muted: #9aa5b4;
+            --primary: #2c5ea0;
+            --primary-light: rgba(44,94,160,0.08);
+            --green: #48a078;
+            --green-light: rgba(72,160,120,0.1);
+            --link-blue: #6395de;
+            --link-light: rgba(99,149,222,0.1);
+            --danger: #cc4455;
+            --radius: 10px;
+            --radius-sm: 6px;
+            --font: 'IBM Plex Sans', system-ui, sans-serif;
+            --mono: 'JetBrains Mono', monospace;
+        }
+
+        body {
+            font-family: var(--font);
+            background: var(--bg);
+            color: var(--text);
+            line-height: 1.5;
+            min-height: 100vh;
+        }
+
+        /* ── Header ── */
+        .header {
+            background: var(--surface);
+            border-bottom: 1px solid var(--border);
+            padding: 14px 24px;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+        .header-inner {
+            max-width: 1080px;
+            margin: 0 auto;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            flex-wrap: wrap;
+        }
+        .logo-area { display: flex; align-items: center; gap: 20px; }
+        .logo-group { display: flex; align-items: center; gap: 12px; }
+        .logo-group img { height: 32px; width: auto; object-fit: contain; }
+        .logo-separator { width: 1px; height: 24px; background: var(--border); margin: 0 4px; }
+        .logo-title {
+            font-family: var(--font);
+            font-size: 32px; font-weight: 700; letter-spacing: -0.5px; color: var(--primary);
+            line-height: 1;
+            text-transform: uppercase;
+        }
+        .logo-sub { font-size: 11px; color: var(--text-secondary); font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; margin-top: 4px; }
+
+        /* ── Floating Logo ── */
+        .footer-logo {
+            position: fixed;
+            bottom: 24px;
+            right: 24px;
+            z-index: 1000;
+            background: var(--surface);
+            padding: 10px 16px;
+            border-radius: var(--radius);
+            border: 1px solid var(--border);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            pointer-events: none; /* Don't block clicks */
+        }
+        .footer-logo .logo-pair {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .footer-logo img {
+            height: 32px;
+            width: auto;
+            object-fit: contain;
+        }
+        .footer-logo .separator {
+            width: 1px;
+            height: 20px;
+            background: var(--border);
+        }
+        .footer-logo-text {
+            text-align: right;
+        }
+        .footer-logo-text .name {
+            font-size: 10px;
+            font-weight: 700;
+            color: var(--text);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            display: block;
+        }
+
+        .btn-upload {
+            display: flex; align-items: center; gap: 7px;
+            padding: 9px 18px; border: none; border-radius: 8px;
+            background: var(--primary); color: #fff;
+            font-size: 13px; font-weight: 600; cursor: pointer;
+            font-family: var(--font);
+            transition: opacity 0.15s;
+        }
+        .btn-upload:hover { opacity: 0.9; }
+
+        .btn-logout {
+            display: flex; align-items: center; gap: 7px;
+            padding: 9px 18px; border: 1px solid var(--border); border-radius: 8px;
+            background: var(--surface); color: var(--text-secondary);
+            font-size: 13px; font-weight: 600; cursor: pointer;
+            font-family: var(--font); text-decoration: none;
+            transition: all 0.15s;
+        }
+        .btn-logout:hover { background: var(--bg); border-color: var(--text-muted); color: var(--text); }
+
+        /* ── Stats ── */
+        .stats-row {
+            max-width: 1080px; margin: 0 auto;
+            display: flex; gap: 12px; padding: 20px 24px 0;
+        }
+        .stat-card {
+            flex: 1; background: var(--surface); border: 1px solid var(--border);
+            border-radius: var(--radius); padding: 14px 20px;
+            display: flex; flex-direction: column; align-items: center; gap: 2px;
+        }
+        .stat-num {
+            font-size: 24px; font-weight: 700; color: var(--primary);
+            font-family: var(--mono);
+        }
+        .stat-lbl {
+            font-size: 10px; font-weight: 600; color: var(--text-muted);
+            text-transform: uppercase; letter-spacing: 1px;
+        }
+
+        /* ── Filters ── */
+        .filter-bar {
+            max-width: 1080px; margin: 0 auto; padding: 18px 24px 0;
+        }
+        .search-box { position: relative; margin-bottom: 12px; }
+        .search-box svg {
+            position: absolute; left: 12px; top: 12px;
+            pointer-events: none;
+        }
+        .search-input {
+            width: 100%; padding: 10px 14px 10px 38px;
+            border: 1px solid var(--border); border-radius: 8px;
+            background: var(--surface); color: var(--text);
+            font-size: 14px; font-family: var(--font); outline: none;
+        }
+        .search-input:focus { border-color: var(--primary); }
+        .search-input::placeholder { color: var(--text-muted); }
+
+        .filter-controls {
+            display: flex; align-items: center; justify-content: space-between;
+            gap: 12px; flex-wrap: wrap;
+        }
+        .tabs { display: flex; gap: 4px; flex-wrap: wrap; }
+        .tab {
+            padding: 6px 14px; border: 1px solid var(--border); border-radius: var(--radius-sm);
+            background: var(--surface); color: var(--text-muted);
+            font-size: 12px; font-weight: 500; cursor: pointer;
+            font-family: var(--font); transition: all 0.15s;
+        }
+        .tab:hover { border-color: var(--primary); color: var(--text-secondary); }
+        .tab.active {
+            background: var(--primary); border-color: var(--primary); color: #fff;
+        }
+        .sort-select {
+            padding: 6px 12px; border: 1px solid var(--border); border-radius: var(--radius-sm);
+            background: var(--surface); color: var(--text-secondary);
+            font-size: 12px; font-family: var(--font); outline: none; cursor: pointer;
+        }
+
+        /* ── Grid ── */
+        .grid {
+            max-width: 1080px; margin: 0 auto;
+            padding: 18px 24px 40px;
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(310px, 1fr));
+            gap: 14px;
+        }
+
+        /* ── Card ── */
+        .card {
+            background: var(--surface); border: 1px solid var(--border);
+            border-radius: 12px; overflow: hidden; cursor: pointer;
+            transition: box-shadow 0.2s, border-color 0.2s;
+        }
+        .card:hover {
+            border-color: #c0c8d4;
+            box-shadow: 0 4px 16px rgba(0,0,0,0.06);
+        }
+        .card-preview {
+            height: 140px; overflow: hidden; border-bottom: 1px solid var(--border-light);
+            background: #f8f9fb;
+        }
+        .card-preview img { width: 100%; height: 100%; object-fit: cover; }
+        .card-body { padding: 16px 18px 18px; }
+        .card-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+        .type-badge {
+            font-size: 11px; font-weight: 600; padding: 3px 9px; border-radius: 5px;
+        }
+        .type-excel { background: var(--green-light); color: var(--green); }
+        .type-streamlit { background: var(--link-light); color: var(--link-blue); }
+        .type-other { background: var(--primary-light); color: var(--primary); }
+        .dept-badge {
+            font-size: 10px; font-weight: 600; text-transform: uppercase;
+            letter-spacing: 0.8px; color: var(--text-muted);
+            background: #f0f2f5; padding: 3px 9px; border-radius: 4px;
+        }
+        .card-title {
+            font-size: 16px; font-weight: 600; color: var(--text); margin-bottom: 6px;
+        }
+        .card-desc {
+            font-size: 13px; color: var(--text-secondary); line-height: 1.55;
+            margin-bottom: 12px;
+            display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+        }
+        .card-meta {
+            display: flex; align-items: center; gap: 6px;
+            font-size: 11px; color: var(--text-muted); margin-bottom: 14px;
+        }
+        .card-meta .dot { opacity: 0.5; }
+        .card-footer {
+            display: flex; align-items: center; justify-content: space-between;
+            border-top: 1px solid var(--border-light); padding-top: 12px;
+        }
+        .card-stats { display: flex; gap: 14px; }
+        .card-stat {
+            display: flex; align-items: center; gap: 5px;
+            font-size: 12px; color: var(--text-muted);
+        }
+        .card-stat svg { flex-shrink: 0; }
+        .btn-action {
+            padding: 7px 16px; border: 1px solid var(--primary); border-radius: var(--radius-sm);
+            background: transparent; color: var(--primary);
+            font-size: 12px; font-weight: 600; cursor: pointer;
+            font-family: var(--font); text-decoration: none;
+            display: inline-block; transition: all 0.15s;
+        }
+        .btn-action:hover { background: var(--primary); color: #fff; }
+
+        /* ── Empty state ── */
+        .empty-state {
+            text-align: center; padding: 80px 24px;
+            display: flex; flex-direction: column; align-items: center;
+            max-width: 1080px; margin: 0 auto;
+        }
+        .empty-state p { color: var(--text-muted); }
+        .empty-state .title { font-size: 15px; font-weight: 500; color: var(--text-secondary); margin-top: 16px; }
+        .empty-state .sub { font-size: 13px; margin-top: 4px; }
+
+        /* ── Modal ── */
+        .modal-overlay {
+            position: fixed; inset: 0; background: rgba(0,0,0,0.4);
+            display: none; align-items: center; justify-content: center;
+            z-index: 1000; padding: 16px;
+        }
+        .modal-overlay.open { display: flex; }
+        .modal {
+            width: 100%; max-width: 560px; max-height: 92vh; overflow-y: auto;
+            background: var(--surface); border-radius: 14px; border: 1px solid var(--border);
+        }
+        .modal-head {
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 18px 24px 12px; position: sticky; top: 0; background: var(--surface);
+            border-bottom: 1px solid var(--border-light); z-index: 2;
+        }
+        .modal-title { font-size: 17px; font-weight: 600; }
+        .btn-close {
+            background: none; border: none; color: var(--text-muted);
+            font-size: 24px; cursor: pointer; padding: 0 4px;
+        }
+        .modal-body { padding: 16px 24px; display: flex; flex-direction: column; gap: 14px; }
+        .modal-foot {
+            display: flex; justify-content: flex-end; gap: 10px;
+            padding: 14px 24px 18px; border-top: 1px solid var(--border-light);
+        }
+
+        /* ── Form fields ── */
+        .field { width: 100%; }
+        .field-row { display: flex; gap: 12px; }
+        .field-half { flex: 1; min-width: 140px; }
+        .field label {
+            display: block; font-size: 11px; font-weight: 600; color: var(--text-muted);
+            text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 5px;
+        }
+        .field input, .field select, .field textarea {
+            width: 100%; padding: 9px 12px;
+            border: 1px solid #dce4ee; border-radius: 7px;
+            background: #fafbfc; color: var(--text); font-size: 13px;
+            font-family: var(--font); outline: none;
+        }
+        .field textarea { resize: vertical; }
+        .field input:focus, .field select:focus, .field textarea:focus {
+            border-color: var(--primary);
+        }
+
+        .toggle-row { display: flex; gap: 6px; }
+        .toggle-btn {
+            padding: 7px 14px; border: 1px solid #dce4ee; border-radius: var(--radius-sm);
+            background: #fafbfc; color: var(--text-muted);
+            font-size: 12px; font-weight: 500; cursor: pointer;
+            font-family: var(--font); transition: all 0.15s;
+        }
+        .toggle-btn.active {
+            background: var(--primary); border-color: var(--primary); color: #fff;
+        }
+
+        .upload-zone {
+            margin-top: 4px; padding: 20px;
+            border: 2px dashed #dce4ee; border-radius: var(--radius);
+            display: flex; flex-direction: column; align-items: center;
+            cursor: pointer; transition: border-color 0.2s;
+        }
+        .upload-zone:hover { border-color: var(--primary); }
+        .upload-zone p { font-size: 12px; color: var(--text-muted); margin-top: 6px; }
+        .upload-zone .file-name { font-size: 12px; color: var(--green); font-weight: 600; margin-top: 4px; }
+
+        .screenshot-grid { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 4px; }
+        .screenshot-thumb {
+            width: 80px; height: 60px; border-radius: var(--radius-sm); overflow: hidden;
+            position: relative; border: 1px solid var(--border);
+        }
+        .screenshot-thumb img { width: 100%; height: 100%; object-fit: cover; }
+        .screenshot-thumb .remove-btn {
+            position: absolute; top: 2px; right: 2px;
+            width: 18px; height: 18px; border-radius: 50%;
+            background: rgba(0,0,0,0.55); color: #fff;
+            border: none; font-size: 12px; cursor: pointer;
+            display: flex; align-items: center; justify-content: center;
+        }
+        .screenshot-add {
+            width: 80px; height: 60px; border-radius: var(--radius-sm);
+            border: 2px dashed #dce4ee; background: transparent;
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            cursor: pointer; transition: border-color 0.2s;
+        }
+        .screenshot-add:hover { border-color: var(--primary); }
+        .screenshot-add span { font-size: 10px; color: var(--text-muted); margin-top: 2px; }
+
+        .btn-cancel {
+            padding: 9px 18px; border: 1px solid var(--border); border-radius: 8px;
+            background: var(--surface); color: var(--text-secondary);
+            font-size: 13px; font-weight: 500; cursor: pointer; font-family: var(--font);
+        }
+        .btn-publish {
+            padding: 9px 22px; border: none; border-radius: 8px;
+            background: var(--primary); color: #fff;
+            font-size: 13px; font-weight: 600; cursor: pointer; font-family: var(--font);
+            transition: opacity 0.15s;
+        }
+        .btn-publish:hover { opacity: 0.9; }
+        .btn-publish:disabled { opacity: 0.45; cursor: default; }
+        .btn-danger {
+            padding: 9px 18px; border: 1px solid rgba(204,68,85,0.2); border-radius: 8px;
+            background: var(--surface); color: var(--danger);
+            font-size: 13px; font-weight: 500; cursor: pointer; font-family: var(--font);
+        }
+
+        /* ── Detail modal ── */
+        .detail-screenshots {
+            display: flex; gap: 8px; padding: 8px 24px 12px; overflow-x: auto;
+        }
+        .detail-screenshots img {
+            height: 120px; border-radius: 8px; cursor: pointer;
+            border: 1px solid var(--border); object-fit: cover;
+        }
+        .detail-grid {
+            display: grid; grid-template-columns: 1fr 1fr;
+            gap: 10px; padding: 8px 24px 14px;
+        }
+        .detail-cell { display: flex; flex-direction: column; gap: 2px; }
+        .detail-label {
+            font-size: 10px; font-weight: 600; color: var(--text-muted);
+            text-transform: uppercase; letter-spacing: 0.8px;
+        }
+        .detail-val { font-size: 14px; color: var(--text); }
+        .detail-desc {
+            padding: 0 24px 12px;
+        }
+        .detail-desc p { font-size: 14px; color: var(--text-secondary); line-height: 1.65; margin-top: 6px; }
+        .detail-tags { padding: 0 24px 12px; display: flex; gap: 6px; flex-wrap: wrap; }
+        .tag {
+            font-size: 11px; color: var(--primary); background: var(--primary-light);
+            padding: 3px 10px; border-radius: 4px; font-weight: 500;
+        }
+        .detail-stats { padding: 0 24px 8px; display: flex; gap: 20px; }
+        .detail-foot {
+            display: flex; justify-content: space-between; padding: 14px 24px 18px;
+            border-top: 1px solid var(--border-light);
+        }
+
+        /* ── Lightbox ── */
+        .lightbox {
+            position: fixed; inset: 0; background: rgba(0,0,0,0.85);
+            display: none; align-items: center; justify-content: center;
+            z-index: 2000; cursor: zoom-out;
+        }
+        .lightbox.open { display: flex; }
+        .lightbox img { max-width: 90%; max-height: 90%; border-radius: 8px; }
+
+        /* ── Responsive ── */
+        @media (max-width: 600px) {
+            .stats-row { flex-direction: column; }
+            .grid { grid-template-columns: 1fr; }
+            .field-row { flex-direction: column; }
+            .header-inner { justify-content: center; }
+            .footer-logo { display: none; } /* Hide floating logo on small screens to save space */
+        }
+    </style>
+</head>
+<body>
+
+<!-- Header -->
+<header class="header">
+    <div class="header-inner">
+        <div class="logo-area">
+            <div>
+                <div class="logo-title">Watchtower</div>
+                <div class="logo-sub">Internal Resource Portal</div>
+            </div>
+        </div>
+        <div style="display: flex; gap: 10px; align-items: center;">
+            <div style="text-align: right; margin-right: 8px;">
+                <div style="font-size: 13px; font-weight: 700; color: var(--text);">{{ current_user.display_name }}</div>
+                <div style="font-size: 10px; color: var(--text-muted); text-transform: uppercase;">{{ current_user.department }}</div>
+            </div>
+            {% if current_user.role == 'admin' %}
+            <button class="btn-upload" onclick="openUploadModal()">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 5v14M5 12h14"/></svg>
+                Upload Resource
+            </button>
+            {% endif %}
+            <a href="{{ url_for('logout') }}" class="btn-logout">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></svg>
+                Logout
+            </a>
+        </div>
+    </div>
+</header>
+
+<!-- Floating Company Logo -->
+<div class="footer-logo">
+    <div class="footer-logo-text">
+        <span class="name">Powered by:</span>
+    </div>
+    <div class="logo-pair">
+        <img src="{{ url_for('static', filename='img/ACE-logo-HiRes.jpg') }}?v={{ now.strftime('%y%m%d%H') }}" alt="ACE Logo">
+        <div class="separator"></div>
+        <img src="{{ url_for('static', filename='img/CV_Sync__.jpg') }}?v={{ now.strftime('%y%m%d%H') }}" alt="CV Sync Logo">
+    </div>
+</div>
+
+<!-- Stats -->
+<div class="stats-row">
+    <div class="stat-card"><div class="stat-num" id="stat-tools">0</div><div class="stat-lbl">Resources</div></div>
+    <div class="stat-card"><div class="stat-num" id="stat-views">0</div><div class="stat-lbl">Views</div></div>
+    <div class="stat-card"><div class="stat-num" id="stat-downloads">0</div><div class="stat-lbl">Downloads</div></div>
+</div>
+
+<!-- Filters -->
+<div class="filter-bar">
+    <div class="search-box">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#9aa5b4" stroke-width="2">
+            <circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/>
+        </svg>
+        <input class="search-input" id="search-input" placeholder="Search tools & apps..." oninput="loadTools()">
+    </div>
+    <div class="filter-controls">
+        <div class="tabs" id="dept-tabs"></div>
+        <select class="sort-select" id="sort-select" onchange="loadTools()">
+            <option value="recent">Newest</option>
+            <option value="downloads">Most Downloaded</option>
+            <option value="views">Most Viewed</option>
+            <option value="name">A → Z</option>
+        </select>
+    </div>
+</div>
+
+<!-- Tool Grid -->
+<div class="grid" id="tools-grid"></div>
+
+<!-- Empty State -->
+<div class="empty-state" id="empty-state" style="display:none">
+    <svg width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="#c8ced8" stroke-width="1.2">
+        <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12"/>
+    </svg>
+    <p class="title" id="empty-title">No resources uploaded yet</p>
+    <p class="sub" id="empty-sub">Click "Upload Resource" to add your first tool or Streamlit app.</p>
+</div>
+
+<!-- Upload Modal -->
+<div class="modal-overlay" id="upload-modal">
+    <div class="modal">
+        <div class="modal-head">
+            <h2 class="modal-title" id="upload-modal-title">Upload New Resource</h2>
+            <button class="btn-close" onclick="closeUploadModal()">&times;</button>
+        </div>
+        <div class="modal-body">
+            <div class="field">
+                <label>Resource Type</label>
+                <div class="toggle-row" id="type-toggles"></div>
+            </div>
+            <div class="field">
+                <label>Name *</label>
+                <input id="f-name" placeholder="e.g. Structural Load Calculator">
+            </div>
+            <div class="field">
+                <label>Description *</label>
+                <textarea id="f-desc" rows="3" placeholder="What does this tool do? Who is it for?"></textarea>
+            </div>
+            <div class="field-row">
+                <div class="field field-half">
+                    <label>Department</label>
+                    <select id="f-dept">
+                        <option>Engineering</option>
+                        <option>Administration</option>
+                        <option>Finance</option>
+                    </select>
+                </div>
+                <div class="field field-half">
+                    <label>Version</label>
+                    <input id="f-version" value="1.0.0">
+                </div>
+            </div>
+            <div class="field" id="link-field" style="display:none">
+                <label>App URL *</label>
+                <input id="f-link" placeholder="https://your-app.streamlit.app">
+            </div>
+            <div class="field" id="file-field">
+                <label>File</label>
+                <div class="upload-zone" id="upload-zone" onclick="document.getElementById('f-file').click()">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#9aa5b4" stroke-width="1.5">
+                        <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12"/>
+                    </svg>
+                    <p>Click to select file</p>
+                    <div class="file-name" id="file-name-display"></div>
+                </div>
+                <input type="file" id="f-file" style="display:none" onchange="onFileSelected(this)">
+            </div>
+            <div class="field">
+                <label>Tags (comma-separated)</label>
+                <input id="f-tags" placeholder="e.g. structural, load, beam">
+            </div>
+            <div class="field">
+                <label>Changelog / Notes</label>
+                <textarea id="f-changelog" rows="2" placeholder="What changed in this version?"></textarea>
+            </div>
+            <div class="field">
+                <label>Screenshots (max 2MB each)</label>
+                <div class="screenshot-grid" id="screenshot-grid">
+                    <button class="screenshot-add" onclick="document.getElementById('f-screenshots').click()">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#9aa5b4" stroke-width="2">
+                            <rect x="3" y="3" width="18" height="18" rx="2"/>
+                            <circle cx="8.5" cy="8.5" r="1.5"/>
+                            <path d="M21 15l-5-5L5 21"/>
+                        </svg>
+                        <span>Add</span>
+                    </button>
+                </div>
+                <input type="file" id="f-screenshots" accept="image/*" multiple style="display:none" onchange="onScreenshotsSelected(this)">
+            </div>
+        </div>
+        <div class="modal-foot">
+            <button class="btn-cancel" onclick="closeUploadModal()">Cancel</button>
+            <button class="btn-publish" id="btn-publish" onclick="submitTool()">Publish</button>
+        </div>
+    </div>
+</div>
+
+<!-- Detail Modal -->
+<div class="modal-overlay" id="detail-modal">
+    <div class="modal" style="max-width:600px">
+        <div class="modal-head">
+            <h2 class="modal-title" id="detail-title"></h2>
+            <button class="btn-close" onclick="closeDetailModal()">&times;</button>
+        </div>
+        <div class="detail-screenshots" id="detail-screenshots"></div>
+        <div class="detail-grid" id="detail-grid"></div>
+        <div class="detail-desc" id="detail-desc-section"></div>
+        <div class="detail-tags" id="detail-tags"></div>
+        <div class="detail-stats" id="detail-stats"></div>
+        <div class="detail-foot">
+            {% if current_user.role == 'admin' %}
+            <button class="btn-danger" id="btn-delete">Delete</button>
+            {% endif %}
+            <div style="display:flex;gap:10px">
+                {% if current_user.role == 'admin' %}
+                <button class="btn-cancel" id="btn-edit">Edit</button>
+                {% endif %}
+                <a class="btn-publish" id="btn-detail-action" href="#" style="text-decoration:none;text-align:center">Download</a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Lightbox -->
+<div class="lightbox" id="lightbox" onclick="closeLightbox()">
+    <img id="lightbox-img" src="" alt="">
+</div>
+
+
+<script>
+/* ── State ── */
+const currentUserRole = "{{ current_user.role }}";
+const DEPARTMENTS = ['All', 'Engineering', 'Administration', 'Finance'];
+const RESOURCE_TYPES = ['Excel Tool', 'Streamlit App', 'Other'];
+let currentDept = 'All';
+let currentResourceType = 'Excel Tool';
+let editingToolId = null;
+let pendingScreenshots = []; // {file, previewUrl}
+let existingScreenshotIds = []; // for edit mode – IDs to keep
+
+/* ── Init ── */
+document.addEventListener('DOMContentLoaded', () => {
+    renderDeptTabs();
+    renderTypeToggles();
+    loadTools();
+    loadStats();
+});
+
+/* ── Department tabs ── */
+function renderDeptTabs() {
+    const container = document.getElementById('dept-tabs');
+    container.innerHTML = DEPARTMENTS.map(d =>
+        `<button class="tab ${d === currentDept ? 'active' : ''}" onclick="setDept('${d}')">${d}</button>`
+    ).join('');
+}
+function setDept(d) {
+    currentDept = d;
+    renderDeptTabs();
+    loadTools();
+}
+
+/* ── Resource type toggles ── */
+function renderTypeToggles() {
+    const container = document.getElementById('type-toggles');
+    container.innerHTML = RESOURCE_TYPES.map(rt =>
+        `<button class="toggle-btn ${rt === currentResourceType ? 'active' : ''}" onclick="setResourceType('${rt}')">${rt}</button>`
+    ).join('');
+    document.getElementById('link-field').style.display = currentResourceType === 'Streamlit App' ? '' : 'none';
+    document.getElementById('file-field').style.display = currentResourceType === 'Streamlit App' ? 'none' : '';
+}
+function setResourceType(rt) {
+    currentResourceType = rt;
+    renderTypeToggles();
+}
+
+/* ── Load tools from API ── */
+async function loadTools() {
+    const search = document.getElementById('search-input').value;
+    const sort = document.getElementById('sort-select').value;
+    const params = new URLSearchParams({ department: currentDept, search, sort });
+
+    try {
+        const res = await fetch(`/api/tools?${params}`);
+        if (!res.ok) throw new Error('Status ' + res.status);
+        const tools = await res.json();
+        renderGrid(tools);
+    } catch (e) {
+        console.error('Failed to load tools:', e);
+    }
+}
+
+async function loadStats() {
+    try {
+        const res = await fetch('/api/stats');
+        if (!res.ok) return;
+        const stats = await res.json();
+        document.getElementById('stat-tools').textContent = stats.tools;
+        document.getElementById('stat-views').textContent = formatCount(stats.views);
+        document.getElementById('stat-downloads').textContent = formatCount(stats.downloads);
+    } catch (e) {}
+}
+
+function formatCount(n) {
+    if (!n) return '0';
+    if (n >= 1000) return (n / 1000).toFixed(1).replace(/\.0$/, '') + 'k';
+    return n.toString();
+}
+
+function timeAgo(iso) {
+    const d = new Date(iso);
+    const now = new Date();
+    const mins = Math.floor((now - d) / 60000);
+    if (mins < 1) return 'Just now';
+    if (mins < 60) return mins + 'm ago';
+    const hrs = Math.floor(mins / 60);
+    if (hrs < 24) return hrs + 'h ago';
+    const days = Math.floor(hrs / 24);
+    if (days < 30) return days + 'd ago';
+    return d.toLocaleDateString();
+}
+
+/* ── Render grid ── */
+function renderGrid(tools) {
+    const grid = document.getElementById('tools-grid');
+    const empty = document.getElementById('empty-state');
+
+    if (tools.length === 0) {
+        grid.innerHTML = '';
+        empty.style.display = 'flex';
+        const search = document.getElementById('search-input').value;
+        document.getElementById('empty-title').textContent = search ? 'No results match your search.' : 'No resources uploaded yet';
+        document.getElementById('empty-sub').textContent = search ? '' : 'Click "Upload Resource" to add your first tool or Streamlit app.';
+        return;
+    }
+
+    empty.style.display = 'none';
+    grid.innerHTML = tools.map(t => {
+        const isLink = t.resource_type === 'Streamlit App';
+        const typeClass = isLink ? 'type-streamlit' : t.resource_type === 'Other' ? 'type-other' : 'type-excel';
+        const typeLabel = isLink ? '🔗 Web App' : t.resource_type === 'Other' ? '📄 Resource' : '📊 Excel';
+        const preview = t.screenshots?.length > 0
+            ? `<div class="card-preview"><img src="${t.screenshots[0].url}" alt=""></div>` : '';
+        const actionBtn = isLink
+            ? `<a class="btn-action" href="${t.link}" target="_blank" rel="noopener" onclick="event.stopPropagation();trackDownload(${t.id})">Open App →</a>`
+            : t.has_file
+              ? `<a class="btn-action" href="/api/tools/${t.id}/download" onclick="event.stopPropagation()">Download</a>`
+              : `<span class="btn-action" style="opacity:0.4;cursor:default">No file</span>`;
+
+        return `
+        <div class="card" onclick="openDetail(${t.id})">
+            ${preview}
+            <div class="card-body">
+                <div class="card-top">
+                    <span class="type-badge ${typeClass}">${typeLabel}</span>
+                    <span class="dept-badge">${t.department}</span>
+                </div>
+                <div class="card-title">${esc(t.name)}</div>
+                <div class="card-desc">${esc(t.description)}</div>
+                <div class="card-meta">
+                    <span style="color:var(--primary);font-weight:600">By ${esc(t.creator_name)}</span>
+                    <span class="dot">·</span>
+                    <span>v${esc(t.version)}</span>
+                    <span class="dot">·</span>
+                    <span>${timeAgo(t.upload_date)}</span>
+                </div>
+                <div class="card-footer">
+                    <div class="card-stats">
+                        <span class="card-stat">
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                            ${formatCount(t.views)}
+                        </span>
+                        <span class="card-stat">
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+                            ${formatCount(t.downloads)}
+                        </span>
+                    </div>
+                    ${actionBtn}
+                </div>
+            </div>
+        </div>`;
+    }).join('');
+}
+
+function esc(str) {
+    const el = document.createElement('span');
+    el.textContent = str || '';
+    return el.innerHTML;
+}
+
+/* ── Track downloads for Streamlit links ── */
+async function trackDownload(id) {
+    await fetch(`/api/tools/${id}/download`, { method: 'HEAD' }).catch(() => {});
+    loadStats();
+}
+
+/* ── Upload Modal ── */
+function openUploadModal(tool) {
+    editingToolId = tool ? tool.id : null;
+    pendingScreenshots = [];
+    existingScreenshotIds = [];
+
+    document.getElementById('upload-modal-title').textContent = tool ? 'Edit Resource' : 'Upload New Resource';
+    document.getElementById('btn-publish').textContent = tool ? 'Save Changes' : 'Publish';
+
+    document.getElementById('f-name').value = tool ? tool.name : '';
+    document.getElementById('f-desc').value = tool ? tool.description : '';
+    document.getElementById('f-dept').value = tool ? tool.department : 'Engineering';
+    document.getElementById('f-version').value = tool ? tool.version : '1.0.0';
+    document.getElementById('f-link').value = tool ? (tool.link || '') : '';
+    document.getElementById('f-tags').value = tool ? (tool.tags || []).join(', ') : '';
+    document.getElementById('f-changelog').value = tool ? (tool.changelog || '') : '';
+    document.getElementById('file-name-display').textContent = tool && tool.file_name ? tool.file_name : '';
+    document.getElementById('f-file').value = '';
+
+    currentResourceType = tool ? tool.resource_type : 'Excel Tool';
+    renderTypeToggles();
+
+    if (tool && tool.screenshots) {
+        existingScreenshotIds = tool.screenshots.map(s => s.id);
+    }
+    renderScreenshotPreviews(tool ? tool.screenshots : []);
+
+    document.getElementById('upload-modal').classList.add('open');
+}
+
+function closeUploadModal() {
+    document.getElementById('upload-modal').classList.remove('open');
+    editingToolId = null;
+    pendingScreenshots = [];
+}
+
+function onFileSelected(input) {
+    const file = input.files[0];
+    document.getElementById('file-name-display').textContent = file ? file.name : '';
+}
+
+function onScreenshotsSelected(input) {
+    Array.from(input.files).forEach(file => {
+        if (!file.type.startsWith('image/')) return;
+        if (file.size > 2 * 1024 * 1024) { alert('Image must be under 2MB'); return; }
+        const url = URL.createObjectURL(file);
+        pendingScreenshots.push({ file, previewUrl: url });
+    });
+    input.value = '';
+    renderScreenshotPreviews();
+}
+
+function renderScreenshotPreviews(existing) {
+    const grid = document.getElementById('screenshot-grid');
+    let html = '';
+
+    // Existing screenshots (edit mode)
+    if (existing) {
+        existing.forEach(s => {
+            html += `
+            <div class="screenshot-thumb">
+                <img src="${s.url}" alt="">
+                <button class="remove-btn" onclick="removeExistingScreenshot(${s.id})">&times;</button>
+            </div>`;
+        });
+    }
+
+    // Pending new screenshots
+    pendingScreenshots.forEach((s, i) => {
+        html += `
+        <div class="screenshot-thumb">
+            <img src="${s.previewUrl}" alt="">
+            <button class="remove-btn" onclick="removePendingScreenshot(${i})">&times;</button>
+        </div>`;
+    });
+
+    html += `
+    <button class="screenshot-add" onclick="document.getElementById('f-screenshots').click()">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#9aa5b4" stroke-width="2">
+            <rect x="3" y="3" width="18" height="18" rx="2"/>
+            <circle cx="8.5" cy="8.5" r="1.5"/>
+            <path d="M21 15l-5-5L5 21"/>
+        </svg>
+        <span>Add</span>
+    </button>`;
+
+    grid.innerHTML = html;
+}
+
+function removePendingScreenshot(i) {
+    URL.revokeObjectURL(pendingScreenshots[i].previewUrl);
+    pendingScreenshots.splice(i, 1);
+    renderScreenshotPreviews();
+}
+
+async function removeExistingScreenshot(id) {
+    await fetch(`/api/screenshots/${id}`, { method: 'DELETE' });
+    existingScreenshotIds = existingScreenshotIds.filter(x => x !== id);
+    // Refresh detail
+    loadTools();
+}
+
+/* ── Submit tool ── */
+async function submitTool() {
+    const name = document.getElementById('f-name').value.trim();
+    const desc = document.getElementById('f-desc').value.trim();
+    if (!name || !desc) { alert('Name and description are required'); return; }
+
+    const formData = new FormData();
+    formData.append('name', name);
+    formData.append('description', desc);
+    formData.append('department', document.getElementById('f-dept').value);
+    formData.append('version', document.getElementById('f-version').value);
+    formData.append('resource_type', currentResourceType);
+    formData.append('link', document.getElementById('f-link').value.trim());
+    formData.append('tags', document.getElementById('f-tags').value);
+    formData.append('changelog', document.getElementById('f-changelog').value);
+
+    const fileInput = document.getElementById('f-file');
+    if (fileInput.files[0]) {
+        formData.append('file', fileInput.files[0]);
+    }
+
+    pendingScreenshots.forEach(s => {
+        formData.append('screenshots', s.file);
+    });
+
+    const url = editingToolId ? `/api/tools/${editingToolId}` : '/api/tools';
+    const method = editingToolId ? 'PUT' : 'POST';
+
+    try {
+        const res = await fetch(url, { method, body: formData });
+        if (res.ok) {
+            closeUploadModal();
+            loadTools();
+            loadStats();
+        } else {
+            let errorMsg = 'Upload failed';
+            try {
+                const err = await res.json();
+                errorMsg = err.error || errorMsg;
+            } catch (e) {
+                if (res.status === 413) errorMsg = 'File too large (Max 50MB)';
+                else if (res.status === 401) errorMsg = 'Session expired. Please refresh and login again.';
+                else errorMsg = 'Server error (' + res.status + '). Please contact admin.';
+            }
+            alert(errorMsg);
+        }
+    } catch (e) {
+        alert('Upload failed: ' + e.message);
+    }
+}
+
+/* ── Detail Modal ── */
+let currentDetailTool = null;
+
+async function openDetail(id) {
+    // Increment views
+    await fetch(`/api/tools/${id}/view`, { method: 'POST' });
+
+    const res = await fetch('/api/tools');
+    if (!res.ok) return;
+    const tools = await res.json();
+    const tool = tools.find(t => t.id === id);
+    if (!tool) return;
+    currentDetailTool = tool;
+
+    const isLink = tool.resource_type === 'Streamlit App';
+
+    document.getElementById('detail-title').textContent = tool.name;
+
+    // Screenshots
+    const ssContainer = document.getElementById('detail-screenshots');
+    ssContainer.innerHTML = (tool.screenshots || []).map(s =>
+        `<img src="${s.url}" alt="" onclick="openLightbox('${s.url}')">`
+    ).join('');
+    ssContainer.style.display = tool.screenshots?.length ? '' : 'none';
+
+    // Grid
+    let gridHtml = `
+        <div class="detail-cell"><span class="detail-label">Type</span><span class="detail-val">${esc(tool.resource_type)}</span></div>
+        <div class="detail-cell"><span class="detail-label">Department</span><span class="detail-val">${esc(tool.department)}</span></div>
+        <div class="detail-cell"><span class="detail-label">Creator</span><span class="detail-val" style="color:var(--primary);font-weight:600">${esc(tool.creator_name)}</span></div>
+        <div class="detail-cell"><span class="detail-label">Version</span><span class="detail-val">${esc(tool.version)}</span></div>
+        <div class="detail-cell"><span class="detail-label">Updated</span><span class="detail-val">${new Date(tool.upload_date).toLocaleDateString()}</span></div>`;
+    if (tool.file_name) gridHtml += `<div class="detail-cell"><span class="detail-label">File</span><span class="detail-val">${esc(tool.file_name)}</span></div>`;
+    if (tool.file_size) gridHtml += `<div class="detail-cell"><span class="detail-label">Size</span><span class="detail-val">${esc(tool.file_size)}</span></div>`;
+    if (isLink) gridHtml += `<div class="detail-cell" style="grid-column:1/-1"><span class="detail-label">URL</span><a href="${esc(tool.link)}" target="_blank" rel="noopener" style="color:var(--link-blue);word-break:break-all;font-size:14px">${esc(tool.link)}</a></div>`;
+    document.getElementById('detail-grid').innerHTML = gridHtml;
+
+    // Description
+    document.getElementById('detail-desc-section').innerHTML = `
+        <span class="detail-label">Description</span>
+        <p>${esc(tool.description)}</p>
+        ${tool.changelog ? `<span class="detail-label" style="margin-top:10px;display:block">Changelog</span><p style="color:var(--text-muted);font-size:13px">${esc(tool.changelog)}</p>` : ''}`;
+
+    // Tags
+    const tagsEl = document.getElementById('detail-tags');
+    tagsEl.innerHTML = (tool.tags || []).map(t => `<span class="tag">${esc(t)}</span>`).join('');
+    tagsEl.style.display = tool.tags?.length ? '' : 'none';
+
+    // Stats
+    document.getElementById('detail-stats').innerHTML = `
+        <span class="card-stat">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+            ${tool.views.toLocaleString()} views
+        </span>
+        <span class="card-stat">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+            ${tool.downloads.toLocaleString()} downloads
+        </span>`;
+
+    // Action button
+    const actionBtn = document.getElementById('btn-detail-action');
+    if (isLink) {
+        actionBtn.textContent = 'Open App →';
+        actionBtn.href = tool.link;
+        actionBtn.target = '_blank';
+        actionBtn.onclick = null;
+    } else if (tool.has_file) {
+        actionBtn.textContent = 'Download';
+        actionBtn.href = `/api/tools/${tool.id}/download`;
+        actionBtn.target = '';
+        actionBtn.onclick = () => { loadStats(); };
+    } else {
+        actionBtn.textContent = 'No file';
+        actionBtn.href = '#';
+        actionBtn.style.opacity = '0.4';
+    }
+
+    // Edit / Delete
+    if (currentUserRole === 'admin') {
+        document.getElementById('btn-edit').onclick = () => {
+            closeDetailModal();
+            openUploadModal(tool);
+        };
+        document.getElementById('btn-delete').onclick = async () => {
+            if (!confirm(`Delete "${tool.name}"? This cannot be undone.`)) return;
+            const res = await fetch(`/api/tools/${tool.id}`, { method: 'DELETE' });
+            if (!res.ok) {
+                alert('Delete failed');
+                return;
+            }
+            closeDetailModal();
+            loadTools();
+            loadStats();
+        };
+    }
+
+    document.getElementById('detail-modal').classList.add('open');
+    loadStats();
+}
+
+function closeDetailModal() {
+    document.getElementById('detail-modal').classList.remove('open');
+    currentDetailTool = null;
+}
+
+/* ── Lightbox ── */
+function openLightbox(url) {
+    document.getElementById('lightbox-img').src = url;
+    document.getElementById('lightbox').classList.add('open');
+}
+function closeLightbox() {
+    document.getElementById('lightbox').classList.remove('open');
+}
+
+/* ── Close modals on Escape ── */
+document.addEventListener('keydown', e => {
+    if (e.key === 'Escape') {
+        closeUploadModal();
+        closeDetailModal();
+        closeLightbox();
+    }
+});
+</script>
+
+</body>
+</html>
