@@ -45,7 +45,7 @@ def _apply_comparison_layout(fig, y_axis_label, tickformat=None):
         height=550
     )
 
-def render_apples_tab(registry, load_data_func, get_meta_value_func, direction_map, direction_colors=None):
+def render_apples_tab(registry, load_data_func, get_meta_value_func, direction_map, direction_colors=None, manual_selection=None):
     """
     Renders a tab for comparing two different time periods (datasets) 
     for the same intersection (Apples-to-Apples Comparison).
@@ -63,24 +63,30 @@ def render_apples_tab(registry, load_data_func, get_meta_value_func, direction_m
     # 2. Create container for results (this will appear first in the UI)
     results_container = st.container()
 
-    # 3. Selection widgets at the bottom
-    st.markdown("---")
-    st.write("### Comparison Selection")
-    col_sel1, col_sel2, col_sel3 = st.columns([2, 1, 1])
-    
-    with col_sel1:
-        selected_label = st.selectbox(
-            "Select Intersection",
-            options=[i["label"] for i in comparable_intersections],
-            key="apples_intersection_selector"
-        )
-        selected_intersection = next(i for i in comparable_intersections if i["label"] == selected_label)
-    
-    dataset_options = [d["date_label"] for d in selected_intersection["datasets"]]
-    with col_sel2:
-        p1_label = st.selectbox("Baseline Period (P1)", options=dataset_options, index=0)
-    with col_sel3:
-        p2_label = st.selectbox("Comparison Period (P2)", options=dataset_options, index=min(1, len(dataset_options)-1))
+    # 3. Selection widgets (only shown if not provided via manual_selection)
+    if manual_selection:
+        selected_label = manual_selection.get("label")
+        p1_label = manual_selection.get("p1")
+        p2_label = manual_selection.get("p2")
+        selected_intersection = next((i for i in comparable_intersections if i["label"] == selected_label), comparable_intersections[0])
+    else:
+        st.markdown("---")
+        st.write("### Comparison Selection")
+        col_sel1, col_sel2, col_sel3 = st.columns([2, 1, 1])
+        
+        with col_sel1:
+            selected_label = st.selectbox(
+                "Select Intersection",
+                options=[i["label"] for i in comparable_intersections],
+                key="apples_intersection_selector"
+            )
+            selected_intersection = next(i for i in comparable_intersections if i["label"] == selected_label)
+        
+        dataset_options = [d["date_label"] for d in selected_intersection["datasets"]]
+        with col_sel2:
+            p1_label = st.selectbox("Baseline Period (P1)", options=dataset_options, index=0)
+        with col_sel3:
+            p2_label = st.selectbox("Comparison Period (P2)", options=dataset_options, index=min(1, len(dataset_options)-1))
 
     if p1_label == p2_label:
         st.warning("Please select two different time periods to generate a comparison.")

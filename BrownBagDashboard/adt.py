@@ -552,7 +552,7 @@ def render_adt_tab(selected_corridor, adt_registry, load_data_func, get_meta_val
         sort_order = [e["label"] for e in corridor_entries if e["label"] in df_summary["Intersection"].values]
     
     # --- KPI Cards ---
-    st.subheader("Corridor KPIs")
+    st.subheader("KPIs")
     k1, k2 = st.columns(2)
     
     # 1. Segment Average Daily Traffic (ADT)

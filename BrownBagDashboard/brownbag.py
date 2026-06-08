@@ -140,6 +140,23 @@ INTERSECTION_REGISTRY = [
                 "url": "https://raw.githubusercontent.com/chrquija/BrownBag_Dashboard/main/data/6_MilesAvenue_and_WarnerTrail.xlsx"
             }
         ]
+    },
+    {
+        "label": "Jackson Street & Avenue 48",
+        "lat": 33.70033,
+        "lon": -116.21644,
+        "city": "Indio, California",
+        "corridor": "Jackson Street",
+        "datasets": [
+            {
+                "date_label": "April 9 – April 15, 2025",
+                "url": "data/No.447_JacksonSt_and_Ave48/aggregated/SignalTrends_JacksonSt_and_Ave48_04092025_to_04152025_aggregated.xlsx"
+            },
+            {
+                "date_label": "April 8 – April 14, 2026",
+                "url": "data/No.447_JacksonSt_and_Ave48/aggregated/SignalTrends_JacksonSt_and_Ave48_04082026_to_04142026_aggregated.xlsx"
+            }
+        ]
     }
 ]
 
@@ -287,12 +304,23 @@ def main():
     """, unsafe_allow_html=True)
 
     # 0. Sidebar: Analysis Mode selector
+    if 'analysis_mode' not in st.session_state:
+        st.session_state.analysis_mode = "Intersection Analysis"
+
     st.sidebar.markdown("## Analysis Mode")
+    analysis_mode_options = ["Intersection Analysis", "ADT Analysis", "Apples to Apples", "Corridor-Wide Regression"]
+    
+    # Ensure current mode is valid
+    if st.session_state.analysis_mode not in analysis_mode_options:
+        st.session_state.analysis_mode = "Intersection Analysis"
+
     analysis_mode = st.sidebar.radio(
         "Select Mode",
-        options=["Intersection Analysis", "ADT Analysis"],
-        index=0
+        options=analysis_mode_options,
+        index=analysis_mode_options.index(st.session_state.analysis_mode),
+        key="sidebar_analysis_mode_radio"
     )
+    st.session_state.analysis_mode = analysis_mode
     st.sidebar.markdown("---")
 
     # 1.5. Sidebar: Map Settings section
@@ -325,7 +353,43 @@ def main():
             chosen_dataset = selected["datasets"][0]
 
         DATA_URL = chosen_dataset["url"]
-    else:
+        apples_selection = None
+    elif analysis_mode == "Apples to Apples":
+        st.sidebar.markdown("## Apples to Apples Settings")
+        comparable_intersections = [i for i in INTERSECTION_REGISTRY if len(i["datasets"]) > 1]
+        
+        if not comparable_intersections:
+            st.sidebar.error("No intersections with multiple datasets found.")
+            st.stop()
+            
+        selected_name = st.sidebar.selectbox(
+            "Select Intersection",
+            options=[i["label"] for i in comparable_intersections],
+            index=0
+        )
+        selected = next(i for i in comparable_intersections if i["label"] == selected_name)
+        
+        dataset_options = [d["date_label"] for d in selected["datasets"]]
+        p1_label = st.sidebar.selectbox("Baseline Period (P1)", options=dataset_options, index=0)
+        p2_label = st.sidebar.selectbox("Comparison Period (P2)", options=dataset_options, index=min(1, len(dataset_options)-1))
+        
+        apples_selection = {
+            "label": selected_name,
+            "p1": p1_label,
+            "p2": p2_label
+        }
+        
+        # Use the Baseline dataset (P1) for general app info (city, lat/lon etc) in the header
+        chosen_dataset = next(d for d in selected["datasets"] if d["date_label"] == p1_label)
+        DATA_URL = chosen_dataset["url"]
+    elif analysis_mode == "Corridor-Wide Regression":
+        st.sidebar.markdown("## Regression Settings")
+        st.sidebar.info("Corridor-wide regression analysis uses data from all registered intersections.")
+        # Dummy selection for header/map consistency
+        selected = INTERSECTION_REGISTRY[0]
+        DATA_URL = selected["datasets"][0]["url"]
+        apples_selection = None
+    elif analysis_mode == "ADT Analysis":
         # ADT Analysis Mode
         st.sidebar.markdown("## ADT Settings")
         all_corridors = sorted(list(set([c for entry in ADT_REGISTRY for c in entry["corridors"]])))
@@ -342,6 +406,7 @@ def main():
             
         selected = next((i for i in INTERSECTION_REGISTRY if i["label"] == selected_name), INTERSECTION_REGISTRY[0])
         DATA_URL = selected["datasets"][0]["url"]
+        apples_selection = None
 
     # --- Export Helper ---
     def generate_excel_bytes(df_dict):
@@ -386,7 +451,7 @@ def main():
     if corridor == "N/A":
         corridor = selected["label"]
 
-    if analysis_mode == "Intersection Analysis":
+    if analysis_mode in ["Intersection Analysis", "Corridor-Wide Regression"]:
         st.sidebar.markdown("## Location Info")
         st.sidebar.markdown(
             f"""
@@ -409,7 +474,7 @@ def main():
     st.sidebar.markdown("---")
     st.sidebar.markdown("## Export Data")
     
-    if analysis_mode == "Intersection Analysis":
+    if analysis_mode in ["Intersection Analysis", "Corridor-Wide Regression"]:
         export_df_dict = {
             "Metadata": df_meta,
             "Intersection": df_int,
@@ -425,7 +490,7 @@ def main():
             file_name=export_filename,
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
-    else:
+    elif analysis_mode == "ADT Analysis":
         # ADT Analysis Mode
         export_filename = f"Corridor_{selected_corridor.replace(' ', '_').replace('→', 'to')}.xlsx"
         # We fetch the data for the whole corridor
@@ -549,7 +614,7 @@ div[data-testid="column"]:nth-child(2) > div {
 
     # Map stays pinned in the right rail
     with right_col:
-        if analysis_mode == "Intersection Analysis":
+        if analysis_mode in ["Intersection Analysis", "Apples to Apples", "Corridor-Wide Regression"]:
             # Gather all intersections in this corridor for the map sidebar
             target_corridor = corridor
             relevant_intersections = [
@@ -567,10 +632,13 @@ div[data-testid="column"]:nth-child(2) > div {
                             lbl = f"{lbl} ({ds['date_label']})"
                         intersections_data.append({"name": lbl, "url": ds["url"]})
                         seen_urls.add(ds["url"])
-
-            corridor_labels = [i["label"] for i in INTERSECTION_REGISTRY if i["corridor"] == selected["corridor"]]
+                        
+            if analysis_mode == "Corridor-Wide Regression":
+                corridor_labels = [i["label"] for i in INTERSECTION_REGISTRY]
+            else:
+                corridor_labels = [i["label"] for i in INTERSECTION_REGISTRY if i["corridor"] == selected["corridor"]]
             
-            # Calculate days for Intersection Analysis
+            # Calculate days for display
             try:
                 sd = pd.to_datetime(start_date)
                 ed = pd.to_datetime(end_date)
@@ -591,7 +659,7 @@ div[data-testid="column"]:nth-child(2) > div {
                 study_period=study_period_str,
                 intersections=intersections_data
             )
-        else:
+        elif analysis_mode == "ADT Analysis":
             # ADT Analysis Mode: Dynamic corridor view
             corridor_entries = [entry for entry in ADT_REGISTRY if selected_corridor in entry["corridors"]]
             
@@ -737,9 +805,35 @@ div[data-testid="column"]:nth-child(2) > div {
 
     # All analytics content lives inside the left column
     with left_col:
-        # Create tabs for different analysis sections
-        tabs = ["Average Daily Traffic (ADT)", "Intersection Analysis", "Corridor-Wide Regression", "Apples-to-Apples"]
-        tab_adt, tab1, tab2, tab3 = st.tabs(tabs)
+        # 1. Main Navigation (Tabs equivalent)
+        nav_options = ["Intersection Analysis", "ADT Analysis", "Apples to Apples", "Corridor-Wide Regression"]
+        nav_labels = {
+            "Intersection Analysis": "Intersection Performance",
+            "ADT Analysis": "Average Daily Traffic (ADT)",
+            "Apples to Apples": "Apples-to-Apples Comparison",
+            "Corridor-Wide Regression": "Regression Analysis"
+        }
+
+        selected_nav = st.segmented_control(
+            "Navigation",
+            options=nav_options,
+            format_func=lambda x: nav_labels[x],
+            selection_mode="single",
+            default=st.session_state.analysis_mode,
+            key="main_nav_radio",
+            label_visibility="collapsed"
+        )
+        
+        # Sync back to global state and trigger rerun if changed
+        if selected_nav != st.session_state.analysis_mode:
+            st.session_state.analysis_mode = selected_nav
+            st.rerun()
+
+        # We use containers to maintain the existing code structure without massive re-indentation
+        tab_adt = st.container()
+        tab1 = st.container()
+        tab2 = st.container()
+        tab3 = st.container()
 
         # Helper to format percentages safely (handles 0.78 vs 78)
         def format_percent(val):
@@ -762,651 +856,653 @@ div[data-testid="column"]:nth-child(2) > div {
                     sort_by=adt_sort_order,
                     show_raw=adt_show_raw
                 )
-            else:
-                st.info("Switch to **ADT Analysis** mode in the sidebar to view corridor-wide traffic volumes.")
 
         with tab1:
-            # 1. High-level KPIs (Intersection Sheet)
-            st.subheader("High-Level KPIs")
-
-            kpi_col1, kpi_col2, kpi_col3, kpi_col4 = st.columns(4)
-
-            with kpi_col1:
-                val = df_int["Delay Range 1"].iloc[0]
-                st.markdown(f"""
-<div style="background: var(--secondary-background-color); padding: 15px 5px; border-radius: 12px; border: 2px solid #1f4582; text-align: center; box-shadow: 0 4px 8px rgba(0,0,0,0.05); min-height: 120px; display: flex; flex-direction: column; justify-content: center;">
-    <div style="font-size: 0.8rem; color: #1f4582; text-transform: uppercase; font-weight: 800; letter-spacing: 0.5px; margin-bottom: 8px; line-height: 1.2;">Average Delay (s)</div>
-    <div style="font-size: 1.8rem; font-weight: 900; color: var(--text-color); line-height: 1;">{val:.1f}</div>
-    <div style="font-size: 0.85rem; font-weight: 600; opacity: 0.7; margin-top: 4px;">seconds</div>
-</div>
-""", unsafe_allow_html=True)
-
-            with kpi_col2:
-                val = df_int["Arrivals On Green Range 1"].iloc[0]
-                st.markdown(f"""
-<div style="background: var(--secondary-background-color); padding: 15px 5px; border-radius: 12px; border: 2px solid #1f4582; text-align: center; box-shadow: 0 4px 8px rgba(0,0,0,0.05); min-height: 120px; display: flex; flex-direction: column; justify-content: center;">
-    <div style="font-size: 0.8rem; color: #1f4582; text-transform: uppercase; font-weight: 800; letter-spacing: 0.5px; margin-bottom: 8px; line-height: 1.2;">Arrivals On Green</div>
-    <div style="font-size: 1.8rem; font-weight: 900; color: var(--text-color); line-height: 1;">{format_percent(val)}</div>
-</div>
-""", unsafe_allow_html=True)
-
-            with kpi_col3:
-                val = df_int["Split Failures Range 1"].iloc[0]
-                st.markdown(f"""
-<div style="background: var(--secondary-background-color); padding: 15px 5px; border-radius: 12px; border: 2px solid #1f4582; text-align: center; box-shadow: 0 4px 8px rgba(0,0,0,0.05); min-height: 120px; display: flex; flex-direction: column; justify-content: center;">
-    <div style="font-size: 0.8rem; color: #1f4582; text-transform: uppercase; font-weight: 800; letter-spacing: 0.5px; margin-bottom: 8px; line-height: 1.2;">Split Failures</div>
-    <div style="font-size: 1.8rem; font-weight: 900; color: var(--text-color); line-height: 1;">{format_percent(val)}</div>
-</div>
-""", unsafe_allow_html=True)
-
-            with kpi_col4:
-                val = df_int["Vehicle Samples 1"].iloc[0]
-                st.markdown(f"""
-<div style="background: var(--secondary-background-color); padding: 15px 5px; border-radius: 12px; border: 2px solid #1f4582; text-align: center; box-shadow: 0 4px 8px rgba(0,0,0,0.05); min-height: 120px; display: flex; flex-direction: column; justify-content: center;">
-    <div style="font-size: 0.8rem; color: #1f4582; text-transform: uppercase; font-weight: 800; letter-spacing: 0.5px; margin-bottom: 8px; line-height: 1.2;">Total Vehicles</div>
-    <div style="font-size: 1.8rem; font-weight: 900; color: var(--text-color); line-height: 1;">{int(val):,}</div>
-    <div style="font-size: 0.85rem; font-weight: 600; opacity: 0.7; margin-top: 4px;">vehicles</div>
-</div>
-""", unsafe_allow_html=True)
-
-            # 2. Approach Analysis (By Approach Sheet)
-            st.markdown("---")
-            st.subheader("Performance by Approach Visualizations")
-
-            # Create cleaned and mapped approach names for df_app
-            df_app_plot = df_app.copy()
-            df_app_plot["Approach"] = df_app_plot["Approach"].astype(str).str.strip()
-            df_app_plot["Approach Full"] = df_app_plot["Approach"].map(DIRECTION_MAP).fillna(df_app_plot["Approach"])
-
-            col_chart_1, col_chart_2 = st.columns(2)
-
-            with col_chart_1:
-                fig_delay = px.bar(
-                    df_app_plot,
-                    x="Approach Full",
-                    y="Delay Range 1",
-                    title=f"<b>{intersection}</b><br><sup>Average Delay by Approach | {date_range}</sup>",
-                    text_auto='.1f',
-                    color="Delay Range 1",
-                    color_continuous_scale="RdYlGn_r",  # High delay = Red
-                    labels={"Delay Range 1": "Average Delay (s)", "Approach Full": "Approach"},
-                    hover_data={"Approach Full": True, "Delay Range 1": ":.1f"}
-                )
-                fig_delay.update_layout(
-                    showlegend=False,
-                    title_font_size=26,
-                    yaxis_title="Control Delay (seconds)",
-                    xaxis=dict(
-                        title=dict(text="<b>Approach</b>", font=dict(size=22)),
-                        tickfont=dict(size=18)
-                    ),
-                    yaxis=dict(
-                        title=dict(text="<b>Control Delay (seconds)</b>", font=dict(size=22)),
-                        tickfont=dict(size=18)
-                    ),
-                    uniformtext_minsize=10,
-                    uniformtext_mode='show'
-                )
-                # Improve Tooltips + Increase text size inside bars
-                fig_delay.update_traces(
-                    textfont_size=20,
-                    textposition="auto",
-                    cliponaxis=False,
-                    hovertemplate="<b>Approach:</b> %{x}<br><b>Average Delay:</b> %{y:.1f} seconds<extra></extra>"
-                )
-
-                st.plotly_chart(fig_delay, use_container_width=True)
-
-            with col_chart_2:
-                # Comparison of Volume vs Split Failures
-                fig_combo = go.Figure()
-
-                # Bar for Volume (Use Vehicle Samples 1)
-                # Check if column exists, otherwise fallback
-                vol_col = "Vehicle Samples 1" if "Vehicle Samples 1" in df_app_plot.columns else "Turning Movement Range 1"
-
-                fig_combo.add_trace(go.Bar(
-                    x=df_app_plot["Approach Full"],
-                    y=df_app_plot[vol_col],
-                    text=df_app_plot[vol_col],
-                    texttemplate='%{text:,.0f}',
-                    textposition='auto',
-                    name="Vehicles",
-                    marker_color='rgb(55, 83, 109)',
-                    textfont=dict(size=18),
-                    hovertemplate="<b>Approach:</b> %{x}<br><b>Vehicles:</b> %{y:,}<extra></extra>"
-                ))
-
-                # Line for Split Failures
-                # DIVIDE BY 100 to convert integer 4 to 0.04 (4%)
-                split_fail_values = df_app_plot["Split Failures Range 1"] / 100.0
-
-                fig_combo.add_trace(go.Scatter(
-                    x=df_app_plot["Approach Full"],
-                    y=split_fail_values,
-                    name="Split Failure %",
-                    yaxis="y2",
-                    mode="lines+markers+text",
-                    text=split_fail_values,
-                    texttemplate='%{text:.1%}',
-                    textposition="top center",
-                    textfont=dict(size=16),
-                    line=dict(color='rgb(219, 64, 82)', width=3),
-                    hovertemplate="<b>Approach:</b> %{x}<br><b>Split Failure:</b> %{y:.1%}<extra></extra>"
-                ))
-
-                fig_combo.update_layout(
-                    title=f"<b>{intersection}</b><br><sup>Vehicles vs. Split Failures | {date_range}</sup>",
-                    title_font_size=26,
-                    uniformtext_minsize=10,
-                    uniformtext_mode='show',
-                    margin=dict(t=120, b=100),
-                    xaxis=dict(
-                        title=dict(text="<b>Approach</b>", font=dict(size=22)),
-                        tickfont=dict(size=18)
-                    ),
-                    yaxis=dict(
-                        title=dict(text="<b>Vehicles</b>", font=dict(size=22)),
-                        tickfont=dict(size=18)
-                    ),
-                    yaxis2=dict(
-                        title=dict(text="<b>Split Failures %</b>", font=dict(size=22)),
-                        overlaying="y",
-                        side="right",
-                        tickformat=".1%",
-                        tickfont=dict(size=18)
-                    ),
-                    legend=dict(
-                        orientation="h", 
-                        yanchor="top", 
-                        y=-0.15, 
-                        xanchor="center", 
-                        x=0.5,
-                        font=dict(size=20),
-                        itemsizing='constant'
+            if analysis_mode == "Intersection Analysis":
+                # 1. High-level KPIs (Intersection Sheet)
+                st.subheader("High-Level KPIs")
+    
+                kpi_col1, kpi_col2, kpi_col3, kpi_col4 = st.columns(4)
+    
+                with kpi_col1:
+                    val = df_int["Delay Range 1"].iloc[0]
+                    st.markdown(f"""
+    <div style="background: var(--secondary-background-color); padding: 15px 5px; border-radius: 12px; border: 2px solid #1f4582; text-align: center; box-shadow: 0 4px 8px rgba(0,0,0,0.05); min-height: 120px; display: flex; flex-direction: column; justify-content: center;">
+        <div style="font-size: 0.8rem; color: #1f4582; text-transform: uppercase; font-weight: 800; letter-spacing: 0.5px; margin-bottom: 8px; line-height: 1.2;">Average Delay (s)</div>
+        <div style="font-size: 1.8rem; font-weight: 900; color: var(--text-color); line-height: 1;">{val:.1f}</div>
+        <div style="font-size: 0.85rem; font-weight: 600; opacity: 0.7; margin-top: 4px;">seconds</div>
+    </div>
+    """, unsafe_allow_html=True)
+    
+                with kpi_col2:
+                    val = df_int["Arrivals On Green Range 1"].iloc[0]
+                    st.markdown(f"""
+    <div style="background: var(--secondary-background-color); padding: 15px 5px; border-radius: 12px; border: 2px solid #1f4582; text-align: center; box-shadow: 0 4px 8px rgba(0,0,0,0.05); min-height: 120px; display: flex; flex-direction: column; justify-content: center;">
+        <div style="font-size: 0.8rem; color: #1f4582; text-transform: uppercase; font-weight: 800; letter-spacing: 0.5px; margin-bottom: 8px; line-height: 1.2;">Arrivals On Green</div>
+        <div style="font-size: 1.8rem; font-weight: 900; color: var(--text-color); line-height: 1;">{format_percent(val)}</div>
+    </div>
+    """, unsafe_allow_html=True)
+    
+                with kpi_col3:
+                    val = df_int["Split Failures Range 1"].iloc[0]
+                    st.markdown(f"""
+    <div style="background: var(--secondary-background-color); padding: 15px 5px; border-radius: 12px; border: 2px solid #1f4582; text-align: center; box-shadow: 0 4px 8px rgba(0,0,0,0.05); min-height: 120px; display: flex; flex-direction: column; justify-content: center;">
+        <div style="font-size: 0.8rem; color: #1f4582; text-transform: uppercase; font-weight: 800; letter-spacing: 0.5px; margin-bottom: 8px; line-height: 1.2;">Split Failures</div>
+        <div style="font-size: 1.8rem; font-weight: 900; color: var(--text-color); line-height: 1;">{format_percent(val)}</div>
+    </div>
+    """, unsafe_allow_html=True)
+    
+                with kpi_col4:
+                    val = df_int["Vehicle Samples 1"].iloc[0]
+                    st.markdown(f"""
+    <div style="background: var(--secondary-background-color); padding: 15px 5px; border-radius: 12px; border: 2px solid #1f4582; text-align: center; box-shadow: 0 4px 8px rgba(0,0,0,0.05); min-height: 120px; display: flex; flex-direction: column; justify-content: center;">
+        <div style="font-size: 0.8rem; color: #1f4582; text-transform: uppercase; font-weight: 800; letter-spacing: 0.5px; margin-bottom: 8px; line-height: 1.2;">Total Vehicles</div>
+        <div style="font-size: 1.8rem; font-weight: 900; color: var(--text-color); line-height: 1;">{int(val):,}</div>
+        <div style="font-size: 0.85rem; font-weight: 600; opacity: 0.7; margin-top: 4px;">vehicles</div>
+    </div>
+    """, unsafe_allow_html=True)
+    
+                # 2. Approach Analysis (By Approach Sheet)
+                st.markdown("---")
+                st.subheader("Performance by Approach Visualizations")
+    
+                # Create cleaned and mapped approach names for df_app
+                df_app_plot = df_app.copy()
+                df_app_plot["Approach"] = df_app_plot["Approach"].astype(str).str.strip()
+                df_app_plot["Approach Full"] = df_app_plot["Approach"].map(DIRECTION_MAP).fillna(df_app_plot["Approach"])
+    
+                col_chart_1, col_chart_2 = st.columns(2)
+    
+                with col_chart_1:
+                    fig_delay = px.bar(
+                        df_app_plot,
+                        x="Approach Full",
+                        y="Delay Range 1",
+                        title=f"<b>{intersection}</b><br><sup>Average Delay by Approach | {date_range}</sup>",
+                        text_auto='.1f',
+                        color="Delay Range 1",
+                        color_continuous_scale="RdYlGn_r",  # High delay = Red
+                        labels={"Delay Range 1": "Average Delay (s)", "Approach Full": "Approach"},
+                        hover_data={"Approach Full": True, "Delay Range 1": ":.1f"}
                     )
-                )
-                st.plotly_chart(fig_combo, use_container_width=True)
-
-            # 3. Detailed Movement Analysis (By Movement Sheet)
-            st.markdown("---")
-            st.subheader("Movement Details")
-
-            # Map for human-readable metrics
-            metric_map = {
-                "Avg Control Delay (seconds)": "Delay Range 1",
-                "Arrivals On Green %": "Arrivals On Green Range 1",
-                "Split Failure %": "Split Failures Range 1",
-                "Vehicles": "Vehicle Samples 1"  # Assuming we want sample count here too
-            }
-
-            # Check if 'Vehicle Samples 1' exists in df_mov, if not use Turning Movement
-            if "Vehicle Samples 1" not in df_mov.columns:
-                metric_map["Vehicles"] = "Turning Movement Range 1"
-
-            # Filter controls
-            col_filter, col_display = st.columns([1, 3])
-
-            with col_filter:
-                st.write("**Filter Data**")
-
-                # Clean and map all approaches for filtering and display
-                df_mov_plot = df_mov.copy()
-                df_mov_plot["Approach"] = df_mov_plot["Approach"].astype(str).str.strip()
-                df_mov_plot["Approach Full"] = df_mov_plot["Approach"].map(DIRECTION_MAP).fillna(df_mov_plot["Approach"])
-
-                # Get unique mapped approach names for the filter
-                app_labels = sorted(list(df_mov_plot["Approach Full"].unique()))
-
-                selected_labels = st.multiselect(
-                    "Select Approach",
-                    options=app_labels,
-                    default=app_labels
-                )
-
-                selected_metric_label = st.selectbox(
-                    "Select Metric to Visualize",
-                    list(metric_map.keys())
-                )
-                selected_metric_col = metric_map[selected_metric_label]
-
-            with col_display:
-                # Filter by the mapped labels directly
-                filtered_df = df_mov_plot[df_mov_plot["Approach Full"].isin(selected_labels)].copy()
-
-                # Handle Percentages (Divide by 100 if needed)
-                # Apply to BOTH Split Failure AND Arrivals On Green
-                if "Split Failure" in selected_metric_label or "Arrivals On Green" in selected_metric_label:
-                    # Check if values are integers > 1 (like 32 for 32%)
-                    if filtered_df[selected_metric_col].max() > 1:
-                        filtered_df[selected_metric_col] = filtered_df[selected_metric_col] / 100.0
-
-                # Determine text format
-                if "Delay" in selected_metric_label:
-                    text_fmt = '.1f'
-                elif "Volume" in selected_metric_label or "Vehicles" in selected_metric_label:
-                    text_fmt = '.0f'
-                else:
-                    text_fmt = '.1%'
-
-                # Determine hover format
-                if "Delay" in selected_metric_label:
-                    hover_fmt = ":.1f"
-                    metric_unit = " seconds"
-                elif "Volume" in selected_metric_label or "Vehicles" in selected_metric_label:
-                    hover_fmt = ":,"
-                    metric_unit = " vehicles"
-                else:
-                    hover_fmt = ":.1%"
-                    metric_unit = ""
-
-                fig_mov = px.bar(
-                    filtered_df,
-                    x="Approach Full",
-                    y=selected_metric_col,
-                    color="Movement",
-                    barmode="group",
-                    # Title includes intersection name and date range
-                    title=f"<b>{intersection}</b><br><sup>{selected_metric_label} by Movement | {date_range}</sup>",
-                    text_auto=text_fmt,
-                    hover_name="Movement",
-                    labels={
-                        selected_metric_col: selected_metric_label,
-                        "Approach Full": "Approach"
-                    },
-                    hover_data={
-                        "Approach Full": True,
-                        "Movement": False,
-                        selected_metric_col: hover_fmt
-                    }
-                )
-
-                # Improve Tooltips + Increase text size inside bars
-                fig_mov.update_traces(
-                    textfont_size=20,
-                    textposition="auto",
-                    cliponaxis=False,
-                    hovertemplate="<b>Approach:</b> %{x}<br><b>Movement:</b> %{hovertext}<br><b>" + selected_metric_label + ":</b> %{y" + hover_fmt + "}" + metric_unit + "<extra></extra>"
-                )
-
-                fig_mov.update_layout(
-                    title_font_size=26,
-                    uniformtext_minsize=10,
-                    uniformtext_mode='show',
-                    margin=dict(t=120, b=100),
-                    legend=dict(
-                        orientation="h", 
-                        yanchor="top", 
-                        y=-0.15, 
-                        xanchor="center", 
-                        x=0.5,
-                        font=dict(size=20),
-                        itemsizing='constant'
-                    ),
-                    xaxis=dict(
-                        title=dict(text="<b>Approach</b>", font=dict(size=22)),
-                        tickfont=dict(size=18)
-                    ),
-                    yaxis=dict(
-                        title=dict(text=f"<b>{selected_metric_label}</b>", font=dict(size=22)),
-                        tickfont=dict(size=18)
+                    fig_delay.update_layout(
+                        showlegend=False,
+                        title_font_size=26,
+                        yaxis_title="Control Delay (seconds)",
+                        xaxis=dict(
+                            title=dict(text="<b>Approach</b>", font=dict(size=22)),
+                            tickfont=dict(size=18)
+                        ),
+                        yaxis=dict(
+                            title=dict(text="<b>Control Delay (seconds)</b>", font=dict(size=22)),
+                            tickfont=dict(size=18)
+                        ),
+                        uniformtext_minsize=10,
+                        uniformtext_mode='show'
                     )
-                )
-
-                st.plotly_chart(fig_mov, use_container_width=True)
-
-            # Raw Data Expander
-            with st.expander("View Raw Data"):
-                st.write("Intersection Data", df_int)
-                st.write("Approach Data", df_app)
-                st.write("Movement Data", df_mov)
-
-        # Tab 2: Corridor-Wide Regression Analysis
-        with tab2:
-            st.subheader("Corridor-Wide Regression Analysis (CONCEPT)")
-
-            df_all = load_all_intersections_data(INTERSECTION_REGISTRY)
-
-            if not df_all.empty:
-                # Data Coverage Logic
-                n_points = len(df_all)
-                n_intersections = df_all["Intersection"].nunique()
-
-                missing_items = []
-                standard_directions = ["Northbound", "Southbound", "Eastbound", "Westbound"]
-                diagonal_directions = ["Northeast", "Southeast", "Southwest", "Northwest"]
-
-                for entry in INTERSECTION_REGISTRY:
-                    intersection_data = df_all[df_all["Intersection"] == entry["label"]]
-                    found_directions = intersection_data["Approach Full"].tolist()
-
-                    # Determine which set they use
-                    if any(d in found_directions for d in diagonal_directions):
-                        expected = diagonal_directions
-                    else:
-                        expected = standard_directions
-
-                    missing = [d for d in expected if d not in found_directions]
-                    for m in missing:
-                        missing_items.append(f"{entry['label']} — {m}")
-
-                missing_help = ""
-                if missing_items:
-                    missing_help = f"\n\n**Missing/Excluded:** {', '.join(missing_items)}"
-
-                st.markdown(
-                    f"**Data Coverage:** {n_points} approaches across {n_intersections} intersections",
-                    help=f"An 'approach' = intersection + direction (e.g., 'Washington & Miles — Eastbound'). "
-                         f"With 7 intersections, up to 28 approaches are possible (7×4). "
-                         f"Data may be missing due to detector issues or filtered out for quality.{missing_help}"
-                )
-
-                reg_col1, reg_col2 = st.columns(2)
-
-                with reg_col1:
-                    x_options = {
-                        "Volume (vehicles)": "Vehicle Samples 1",
-                        "Arrivals on Green (%)": "Arrivals On Green Range 1",
-                        "Split Failures (%)": "Split Failures Range 1"
-                    }
-                    x_label = st.selectbox(
-                        "Independent Variable (X) — the input/cause",
-                        options=list(x_options.keys()),
-                        help="The independent variable is what we believe drives or influences the outcome. For traffic engineers: Volume measures demand pressure on the signal."
+                    # Improve Tooltips + Increase text size inside bars
+                    fig_delay.update_traces(
+                        textfont_size=20,
+                        textposition="auto",
+                        cliponaxis=False,
+                        hovertemplate="<b>Approach:</b> %{x}<br><b>Average Delay:</b> %{y:.1f} seconds<extra></extra>"
                     )
-                    x_col = x_options[x_label]
-
-                with reg_col2:
-                    y_options = {
-                        "Average Delay (seconds)": "Delay Range 1",
-                        "Split Failures (%)": "Split Failures Range 1",
-                        "Arrivals on Green (%)": "Arrivals On Green Range 1"
-                    }
-                    y_label = st.selectbox(
-                        "Dependent Variable (Y) — the outcome/effect",
-                        options=list(y_options.keys()),
-                        help="The dependent variable is the performance outcome we are trying to explain or predict. For traffic engineers: Delay is the key measure of how well the signal is serving demand."
-                    )
-                    y_col = y_options[y_label]
-
-                if x_col == y_col:
-                    st.warning("Please select different variables for X and Y axes.")
-                else:
-                    # --- 1. Statistical Calculations (Pre-Visualization) ---
-                    # Prepare chart (and calculate regression internally)
-                    try:
-                        fig_reg = px.scatter(
-                            df_all,
-                            x=x_col,
-                            y=y_col,
-                            color="Intersection",
-                            symbol="Approach Full",
-                            trendline="ols",
-                            trendline_scope="overall",
-                            title=f"<b>{x_label} vs. {y_label}</b><br><sup>Corridor Regression Analysis</sup>",
-                            hover_name="Intersection",
-                            labels={
-                                x_col: f"← Independent Variable: {x_label}",
-                                y_col: f"Dependent Variable: {y_label} →"
-                            },
-                            hover_data=["Intersection", "Approach Full"]
+    
+                    st.plotly_chart(fig_delay, use_container_width=True)
+    
+                with col_chart_2:
+                    # Comparison of Volume vs Split Failures
+                    fig_combo = go.Figure()
+    
+                    # Bar for Volume (Use Vehicle Samples 1)
+                    # Check if column exists, otherwise fallback
+                    vol_col = "Vehicle Samples 1" if "Vehicle Samples 1" in df_app_plot.columns else "Turning Movement Range 1"
+    
+                    fig_combo.add_trace(go.Bar(
+                        x=df_app_plot["Approach Full"],
+                        y=df_app_plot[vol_col],
+                        text=df_app_plot[vol_col],
+                        texttemplate='%{text:,.0f}',
+                        textposition='auto',
+                        name="Vehicles",
+                        marker_color='rgb(55, 83, 109)',
+                        textfont=dict(size=18),
+                        hovertemplate="<b>Approach:</b> %{x}<br><b>Vehicles:</b> %{y:,}<extra></extra>"
+                    ))
+    
+                    # Line for Split Failures
+                    # DIVIDE BY 100 to convert integer 4 to 0.04 (4%)
+                    split_fail_values = df_app_plot["Split Failures Range 1"] / 100.0
+    
+                    fig_combo.add_trace(go.Scatter(
+                        x=df_app_plot["Approach Full"],
+                        y=split_fail_values,
+                        name="Split Failure %",
+                        yaxis="y2",
+                        mode="lines+markers+text",
+                        text=split_fail_values,
+                        texttemplate='%{text:.1%}',
+                        textposition="top center",
+                        textfont=dict(size=16),
+                        line=dict(color='rgb(219, 64, 82)', width=3),
+                        hovertemplate="<b>Approach:</b> %{x}<br><b>Split Failure:</b> %{y:.1%}<extra></extra>"
+                    ))
+    
+                    fig_combo.update_layout(
+                        title=f"<b>{intersection}</b><br><sup>Vehicles vs. Split Failures | {date_range}</sup>",
+                        title_font_size=26,
+                        uniformtext_minsize=10,
+                        uniformtext_mode='show',
+                        margin=dict(t=120, b=100),
+                        xaxis=dict(
+                            title=dict(text="<b>Approach</b>", font=dict(size=22)),
+                            tickfont=dict(size=18)
+                        ),
+                        yaxis=dict(
+                            title=dict(text="<b>Vehicles</b>", font=dict(size=22)),
+                            tickfont=dict(size=18)
+                        ),
+                        yaxis2=dict(
+                            title=dict(text="<b>Split Failures %</b>", font=dict(size=22)),
+                            overlaying="y",
+                            side="right",
+                            tickformat=".1%",
+                            tickfont=dict(size=18)
+                        ),
+                        legend=dict(
+                            orientation="h", 
+                            yanchor="top", 
+                            y=-0.15, 
+                            xanchor="center", 
+                            x=0.5,
+                            font=dict(size=20),
+                            itemsizing='constant'
                         )
+                    )
+                    st.plotly_chart(fig_combo, use_container_width=True)
+    
+                # 3. Detailed Movement Analysis (By Movement Sheet)
+                st.markdown("---")
+                st.subheader("Movement Details")
+    
+                # Map for human-readable metrics
+                metric_map = {
+                    "Avg Control Delay (seconds)": "Delay Range 1",
+                    "Arrivals On Green %": "Arrivals On Green Range 1",
+                    "Split Failure %": "Split Failures Range 1",
+                    "Vehicles": "Vehicle Samples 1"  # Assuming we want sample count here too
+                }
+    
+                # Check if 'Vehicle Samples 1' exists in df_mov, if not use Turning Movement
+                if "Vehicle Samples 1" not in df_mov.columns:
+                    metric_map["Vehicles"] = "Turning Movement Range 1"
+    
+                # Filter controls
+                col_filter, col_display = st.columns([1, 3])
+    
+                with col_filter:
+                    st.write("**Filter Data**")
+    
+                    # Clean and map all approaches for filtering and display
+                    df_mov_plot = df_mov.copy()
+                    df_mov_plot["Approach"] = df_mov_plot["Approach"].astype(str).str.strip()
+                    df_mov_plot["Approach Full"] = df_mov_plot["Approach"].map(DIRECTION_MAP).fillna(df_mov_plot["Approach"])
+    
+                    # Get unique mapped approach names for the filter
+                    app_labels = sorted(list(df_mov_plot["Approach Full"].unique()))
+    
+                    selected_labels = st.multiselect(
+                        "Select Approach",
+                        options=app_labels,
+                        default=app_labels
+                    )
+    
+                    selected_metric_label = st.selectbox(
+                        "Select Metric to Visualize",
+                        list(metric_map.keys())
+                    )
+                    selected_metric_col = metric_map[selected_metric_label]
+    
+                with col_display:
+                    # Filter by the mapped labels directly
+                    filtered_df = df_mov_plot[df_mov_plot["Approach Full"].isin(selected_labels)].copy()
+    
+                    # Handle Percentages (Divide by 100 if needed)
+                    # Apply to BOTH Split Failure AND Arrivals On Green
+                    if "Split Failure" in selected_metric_label or "Arrivals On Green" in selected_metric_label:
+                        # Check if values are integers > 1 (like 32 for 32%)
+                        if filtered_df[selected_metric_col].max() > 1:
+                            filtered_df[selected_metric_col] = filtered_df[selected_metric_col] / 100.0
+    
+                    # Determine text format
+                    if "Delay" in selected_metric_label:
+                        text_fmt = '.1f'
+                    elif "Volume" in selected_metric_label or "Vehicles" in selected_metric_label:
+                        text_fmt = '.0f'
+                    else:
+                        text_fmt = '.1%'
+    
+                    # Determine hover format
+                    if "Delay" in selected_metric_label:
+                        hover_fmt = ":.1f"
+                        metric_unit = " seconds"
+                    elif "Volume" in selected_metric_label or "Vehicles" in selected_metric_label:
+                        hover_fmt = ":,"
+                        metric_unit = " vehicles"
+                    else:
+                        hover_fmt = ":.1%"
+                        metric_unit = ""
+    
+                    fig_mov = px.bar(
+                        filtered_df,
+                        x="Approach Full",
+                        y=selected_metric_col,
+                        color="Movement",
+                        barmode="group",
+                        # Title includes intersection name and date range
+                        title=f"<b>{intersection}</b><br><sup>{selected_metric_label} by Movement | {date_range}</sup>",
+                        text_auto=text_fmt,
+                        hover_name="Movement",
+                        labels={
+                            selected_metric_col: selected_metric_label,
+                            "Approach Full": "Approach"
+                        },
+                        hover_data={
+                            "Approach Full": True,
+                            "Movement": False,
+                            selected_metric_col: hover_fmt
+                        }
+                    )
+    
+                    # Improve Tooltips + Increase text size inside bars
+                    fig_mov.update_traces(
+                        textfont_size=20,
+                        textposition="auto",
+                        cliponaxis=False,
+                        hovertemplate="<b>Approach:</b> %{x}<br><b>Movement:</b> %{hovertext}<br><b>" + selected_metric_label + ":</b> %{y" + hover_fmt + "}" + metric_unit + "<extra></extra>"
+                    )
+    
+                    fig_mov.update_layout(
+                        title_font_size=26,
+                        uniformtext_minsize=10,
+                        uniformtext_mode='show',
+                        margin=dict(t=120, b=100),
+                        legend=dict(
+                            orientation="h", 
+                            yanchor="top", 
+                            y=-0.15, 
+                            xanchor="center", 
+                            x=0.5,
+                            font=dict(size=20),
+                            itemsizing='constant'
+                        ),
+                        xaxis=dict(
+                            title=dict(text="<b>Approach</b>", font=dict(size=22)),
+                            tickfont=dict(size=18)
+                        ),
+                        yaxis=dict(
+                            title=dict(text=f"<b>{selected_metric_label}</b>", font=dict(size=22)),
+                            tickfont=dict(size=18)
+                        )
+                    )
+    
+                    st.plotly_chart(fig_mov, use_container_width=True)
+    
+                # Raw Data Expander
+                with st.expander("View Raw Data"):
+                    st.write("Intersection Data", df_int)
+                    st.write("Approach Data", df_app)
+                    st.write("Movement Data", df_mov)
+    
+            # Tab 2: Corridor-Wide Regression Analysis
+        with tab2:
+            if analysis_mode == "Corridor-Wide Regression":
+                st.subheader("Corridor-Wide Regression Analysis (CONCEPT)")
+    
+                df_all = load_all_intersections_data(INTERSECTION_REGISTRY)
+    
+                if not df_all.empty:
+                    # Data Coverage Logic
+                    n_points = len(df_all)
+                    n_intersections = df_all["Intersection"].nunique()
+    
+                    missing_items = []
+                    standard_directions = ["Northbound", "Southbound", "Eastbound", "Westbound"]
+                    diagonal_directions = ["Northeast", "Southeast", "Southwest", "Northwest"]
+    
+                    for entry in INTERSECTION_REGISTRY:
+                        intersection_data = df_all[df_all["Intersection"] == entry["label"]]
+                        found_directions = intersection_data["Approach Full"].tolist()
+    
+                        # Determine which set they use
+                        if any(d in found_directions for d in diagonal_directions):
+                            expected = diagonal_directions
+                        else:
+                            expected = standard_directions
+    
+                        missing = [d for d in expected if d not in found_directions]
+                        for m in missing:
+                            missing_items.append(f"{entry['label']} — {m}")
+    
+                    missing_help = ""
+                    if missing_items:
+                        missing_help = f"\n\n**Missing/Excluded:** {', '.join(missing_items)}"
+    
+                    st.markdown(
+                        f"**Data Coverage:** {n_points} approaches across {n_intersections} intersections",
+                        help=f"An 'approach' = intersection + direction (e.g., 'Washington & Miles — Eastbound'). "
+                             f"With 7 intersections, up to 28 approaches are possible (7×4). "
+                             f"Data may be missing due to detector issues or filtered out for quality.{missing_help}"
+                    )
+    
+                    reg_col1, reg_col2 = st.columns(2)
+    
+                    with reg_col1:
+                        x_options = {
+                            "Volume (vehicles)": "Vehicle Samples 1",
+                            "Arrivals on Green (%)": "Arrivals On Green Range 1",
+                            "Split Failures (%)": "Split Failures Range 1"
+                        }
+                        x_label = st.selectbox(
+                            "Independent Variable (X) — the input/cause",
+                            options=list(x_options.keys()),
+                            help="The independent variable is what we believe drives or influences the outcome. For traffic engineers: Volume measures demand pressure on the signal."
+                        )
+                        x_col = x_options[x_label]
+    
+                    with reg_col2:
+                        y_options = {
+                            "Average Delay (seconds)": "Delay Range 1",
+                            "Split Failures (%)": "Split Failures Range 1",
+                            "Arrivals on Green (%)": "Arrivals On Green Range 1"
+                        }
+                        y_label = st.selectbox(
+                            "Dependent Variable (Y) — the outcome/effect",
+                            options=list(y_options.keys()),
+                            help="The dependent variable is the performance outcome we are trying to explain or predict. For traffic engineers: Delay is the key measure of how well the signal is serving demand."
+                        )
+                        y_col = y_options[y_label]
+    
+                    if x_col == y_col:
+                        st.warning("Please select different variables for X and Y axes.")
+                    else:
+                        # --- 1. Statistical Calculations (Pre-Visualization) ---
+                        # Prepare chart (and calculate regression internally)
+                        try:
+                            fig_reg = px.scatter(
+                                df_all,
+                                x=x_col,
+                                y=y_col,
+                                color="Intersection",
+                                symbol="Approach Full",
+                                trendline="ols",
+                                trendline_scope="overall",
+                                title=f"<b>{x_label} vs. {y_label}</b><br><sup>Corridor Regression Analysis</sup>",
+                                hover_name="Intersection",
+                                labels={
+                                    x_col: f"← Independent Variable: {x_label}",
+                                    y_col: f"Dependent Variable: {y_label} →"
+                                },
+                                hover_data=["Intersection", "Approach Full"]
+                            )
+                            fig_reg.update_layout(
+                                title_font_size=20,
+                                xaxis=dict(
+                                    title=dict(font=dict(size=16)),
+                                    tickfont=dict(size=12)
+                                ),
+                                yaxis=dict(
+                                    title=dict(font=dict(size=16)),
+                                    tickfont=dict(size=12)
+                                ),
+                                legend=dict(
+                                    title=dict(text="<b>Intersection</b>", font=dict(size=14)),
+                                    font=dict(size=12),
+                                    itemsizing='constant'
+                                )
+                            )
+                            has_trendline = True
+    
+                            # Extract regression results for KPIs
+                            results = px.get_trendline_results(fig_reg)
+                            if not results.empty:
+                                model = results.iloc[0]["px_fit_results"]
+                                r_squared = model.rsquared
+                                slope = model.params[1]
+                                intercept = model.params[0]
+                            else:
+                                r_squared, slope, intercept = 0, 0, 0
+                        except (ImportError, ModuleNotFoundError):
+                            st.warning("Regression analysis requires 'statsmodels' library. Please install it using 'pip install statsmodels' to enable trendlines.")
+                            fig_reg = px.scatter(
+                                df_all,
+                                x=x_col,
+                                y=y_col,
+                                color="Intersection",
+                                symbol="Approach Full",
+                                title=f"<b>{x_label} vs. {y_label}</b><br><sup>Corridor Data (Trendline Unavailable)</sup>",
+                                labels={
+                                    x_col: f"← Independent Variable: {x_label}",
+                                    y_col: f"Dependent Variable: {y_label} →"
+                                },
+                                hover_data=["Intersection", "Approach Full"]
+                            )
+                            fig_reg.update_layout(
+                                title_font_size=20,
+                                xaxis=dict(title=dict(font=dict(size=16))),
+                                yaxis=dict(title=dict(font=dict(size=16)))
+                            )
+                            has_trendline = False
+                            r_squared, slope, intercept = 0, 0, 0
+                        except Exception as e:
+                            st.error(f"Error calculating regression: {e}")
+                            fig_reg = px.scatter(
+                                df_all,
+                                x=x_col,
+                                y=y_col,
+                                color="Intersection",
+                                symbol="Approach Full",
+                                title=f"<b>{x_label} vs. {y_label}</b><br><sup>Corridor Data</sup>",
+                                labels={
+                                    x_col: f"← Independent Variable: {x_label}",
+                                    y_col: f"Dependent Variable: {y_label} →"
+                                },
+                                hover_data=["Intersection", "Approach Full"]
+                            )
+                            fig_reg.update_layout(
+                                title_font_size=20,
+                                xaxis=dict(title=dict(font=dict(size=16))),
+                                yaxis=dict(title=dict(font=dict(size=16)))
+                            )
+                            has_trendline = False
+                            r_squared, slope, intercept = 0, 0, 0
+    
+    
+                        # --- 3. Visualization ---
+                        fig_reg.update_traces(marker=dict(size=12, opacity=0.9, line=dict(width=1, color='DarkSlateGrey')), selector=dict(mode="markers"))
+    
+                        # Regression line color: "#E63946" (red), width 3, dash="dash"
+                        if has_trendline:
+                            fig_reg.update_traces(
+                                line=dict(color="#E63946", width=3, dash="dash"),
+                                selector=dict(mode="lines"),
+                                name="Trendline"
+                            )
+    
+                        # Tooltip formatting
+                        def get_fmt(label):
+                            if "Delay" in label: return ":.1f"
+                            if "Volume" in label: return ":,.0f"
+                            return ":.1%"
+    
+                        def get_suffix(label):
+                            if "Delay" in label: return " sec"
+                            if "Volume" in label: return " vehicles"
+                            return ""
+    
+                        x_fmt = get_fmt(x_label)
+                        x_suffix = get_suffix(x_label)
+                        y_fmt = get_fmt(y_label)
+                        y_suffix = get_suffix(y_label)
+    
+                        fig_reg.update_traces(
+                            hovertemplate=(
+                                "<b>Intersection:</b> %{customdata[0]}<br>"
+                                "<b>Approach:</b> %{customdata[1]}<br>"
+                                f"<b>{x_label}:</b> %{{x{x_fmt}}}{x_suffix}<br>"
+                                f"<b>{y_label}:</b> %{{y{y_fmt}}}{y_suffix}"
+                                "<extra></extra>"
+                            ),
+                            selector=dict(mode="markers")
+                        )
+    
+                        # Add n annotation
+                        n_points = len(df_all)
+                        n_intersections = df_all["Intersection"].nunique()
+                        fig_reg.add_annotation(
+                            text=f"<b>n = {n_points} approaches across {n_intersections} intersections</b>",
+                            xref="paper", yref="paper",
+                            x=0.02, y=0.98, showarrow=False,
+                            font=dict(size=13),
+                            align="left"
+                        )
+    
+                        # Update layout for better legend and fonts
                         fig_reg.update_layout(
+                            margin=dict(l=60, r=20, t=60, b=60),
                             title_font_size=20,
+                            legend=dict(
+                                title=dict(text="<b>Intersection</b>", font=dict(size=14)),
+                                font=dict(size=12),
+                                itemsizing='constant'
+                            ),
+                            font=dict(family="Arial, sans-serif"),
                             xaxis=dict(
                                 title=dict(font=dict(size=16)),
                                 tickfont=dict(size=12)
                             ),
                             yaxis=dict(
                                 title=dict(font=dict(size=16)),
-                                tickfont=dict(size=12)
-                            ),
-                            legend=dict(
-                                title=dict(text="<b>Intersection</b>", font=dict(size=14)),
-                                font=dict(size=12),
-                                itemsizing='constant'
+                                tickfont=dict(size=12),
+                                title_standoff=15
                             )
                         )
-                        has_trendline = True
-
-                        # Extract regression results for KPIs
-                        results = px.get_trendline_results(fig_reg)
-                        if not results.empty:
-                            model = results.iloc[0]["px_fit_results"]
-                            r_squared = model.rsquared
-                            slope = model.params[1]
-                            intercept = model.params[0]
-                        else:
-                            r_squared, slope, intercept = 0, 0, 0
-                    except (ImportError, ModuleNotFoundError):
-                        st.warning("Regression analysis requires 'statsmodels' library. Please install it using 'pip install statsmodels' to enable trendlines.")
-                        fig_reg = px.scatter(
-                            df_all,
-                            x=x_col,
-                            y=y_col,
-                            color="Intersection",
-                            symbol="Approach Full",
-                            title=f"<b>{x_label} vs. {y_label}</b><br><sup>Corridor Data (Trendline Unavailable)</sup>",
-                            labels={
-                                x_col: f"← Independent Variable: {x_label}",
-                                y_col: f"Dependent Variable: {y_label} →"
-                            },
-                            hover_data=["Intersection", "Approach Full"]
-                        )
-                        fig_reg.update_layout(
-                            title_font_size=20,
-                            xaxis=dict(title=dict(font=dict(size=16))),
-                            yaxis=dict(title=dict(font=dict(size=16)))
-                        )
-                        has_trendline = False
-                        r_squared, slope, intercept = 0, 0, 0
-                    except Exception as e:
-                        st.error(f"Error calculating regression: {e}")
-                        fig_reg = px.scatter(
-                            df_all,
-                            x=x_col,
-                            y=y_col,
-                            color="Intersection",
-                            symbol="Approach Full",
-                            title=f"<b>{x_label} vs. {y_label}</b><br><sup>Corridor Data</sup>",
-                            labels={
-                                x_col: f"← Independent Variable: {x_label}",
-                                y_col: f"Dependent Variable: {y_label} →"
-                            },
-                            hover_data=["Intersection", "Approach Full"]
-                        )
-                        fig_reg.update_layout(
-                            title_font_size=20,
-                            xaxis=dict(title=dict(font=dict(size=16))),
-                            yaxis=dict(title=dict(font=dict(size=16)))
-                        )
-                        has_trendline = False
-                        r_squared, slope, intercept = 0, 0, 0
-
-
-                    # --- 3. Visualization ---
-                    fig_reg.update_traces(marker=dict(size=12, opacity=0.9, line=dict(width=1, color='DarkSlateGrey')), selector=dict(mode="markers"))
-
-                    # Regression line color: "#E63946" (red), width 3, dash="dash"
-                    if has_trendline:
-                        fig_reg.update_traces(
-                            line=dict(color="#E63946", width=3, dash="dash"),
-                            selector=dict(mode="lines"),
-                            name="Trendline"
-                        )
-
-                    # Tooltip formatting
-                    def get_fmt(label):
-                        if "Delay" in label: return ":.1f"
-                        if "Volume" in label: return ":,.0f"
-                        return ":.1%"
-
-                    def get_suffix(label):
-                        if "Delay" in label: return " sec"
-                        if "Volume" in label: return " vehicles"
-                        return ""
-
-                    x_fmt = get_fmt(x_label)
-                    x_suffix = get_suffix(x_label)
-                    y_fmt = get_fmt(y_label)
-                    y_suffix = get_suffix(y_label)
-
-                    fig_reg.update_traces(
-                        hovertemplate=(
-                            "<b>Intersection:</b> %{customdata[0]}<br>"
-                            "<b>Approach:</b> %{customdata[1]}<br>"
-                            f"<b>{x_label}:</b> %{{x{x_fmt}}}{x_suffix}<br>"
-                            f"<b>{y_label}:</b> %{{y{y_fmt}}}{y_suffix}"
-                            "<extra></extra>"
-                        ),
-                        selector=dict(mode="markers")
-                    )
-
-                    # Add n annotation
-                    n_points = len(df_all)
-                    n_intersections = df_all["Intersection"].nunique()
-                    fig_reg.add_annotation(
-                        text=f"<b>n = {n_points} approaches across {n_intersections} intersections</b>",
-                        xref="paper", yref="paper",
-                        x=0.02, y=0.98, showarrow=False,
-                        font=dict(size=13),
-                        align="left"
-                    )
-
-                    # Update layout for better legend and fonts
-                    fig_reg.update_layout(
-                        margin=dict(l=60, r=20, t=60, b=60),
-                        title_font_size=20,
-                        legend=dict(
-                            title=dict(text="<b>Intersection</b>", font=dict(size=14)),
-                            font=dict(size=12),
-                            itemsizing='constant'
-                        ),
-                        font=dict(family="Arial, sans-serif"),
-                        xaxis=dict(
-                            title=dict(font=dict(size=16)),
-                            tickfont=dict(size=12)
-                        ),
-                        yaxis=dict(
-                            title=dict(font=dict(size=16)),
-                            tickfont=dict(size=12),
-                            title_standoff=15
-                        )
-                    )
-
-                    st.plotly_chart(fig_reg, use_container_width=True)
-
-                    # Statistical Results
-                    if has_trendline:
-                        st.markdown("---")
-                        st.subheader("Statistical Results & Interpretation")
-
-                        r_percent = r_squared * 100
-                        stat_col1, stat_col2 = st.columns([1, 2])
-
-                        with stat_col1:
-                            # --- Dynamic R2 Styling & Card ---
-                            if r_squared >= 0.8:
-                                r2_color, r2_label, st_func = "#28a745", "Very Strong", st.success
-                                interp_head = "🟢 **Very Strong Relationship:**"
-                            elif r_squared >= 0.6:
-                                r2_color, r2_label, st_func = "#ffc107", "Strong", st.warning
-                                interp_head = "🟡 **Strong Relationship:**"
-                            elif r_squared >= 0.3:
-                                r2_color, r2_label, st_func = "#fd7e14", "Moderate", st.warning
-                                interp_head = "🟠 **Moderate Relationship:**"
-                            else:
-                                r2_color, r2_label, st_func = "#dc3545", "Weak", st.error
-                                interp_head = "🔴 **Weak Relationship:**"
-
-                            r2_html = f"""<div style="background: {r2_color}15; padding: 24px; border-radius: 15px; border: 1px solid {r2_color}44; text-align: center; margin-bottom: 20px;">
-<div style="font-size: 0.85rem; color: var(--text-color); opacity: 0.7; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px;">Relationship Strength (R²)</div>
-<div style="font-size: 3.5rem; font-weight: 900; color: {r2_color}; line-height: 1; margin: 0;">{r_squared:.3f}</div>
-<div style="font-size: 1.25rem; font-weight: 700; color: {r2_color}; margin-top: 10px;">{r2_label}</div>
-</div>"""
-                            st.markdown(r2_html, unsafe_allow_html=True)
-
-                            # Predictive Equation Label
-                            st.write("**Trendline Equation:**")
-                            # Simple y = mx + b form
-                            y_short = y_label.split(" (")[0]
-                            x_short = x_label.split(" (")[0]
-                            sign = "+" if intercept >= 0 else "-"
-                            st.code(f"{y_short} = ({slope:.2f} × {x_short}) {sign} {abs(intercept):.2f}", language="python")
-
-                            slope_dir = "Positive" if slope > 0 else "Negative"
-                            slope_desc = "higher X tends to correspond to higher Y" if slope > 0 else "higher X tends to correspond to lower Y"
-                            st.markdown(f"**Slope:** {slope_dir}")
-                            st.caption(slope_desc)
-
-                        with stat_col2:
-                            # Interpretation wording requested by user
-                            base_msg = f"An R-Square value of **{r_squared:.3f}** means that **{x_label}** is responsible for approximately **{r_percent:.1f}%** of the observed variation in **{y_label}** across this corridor."
-                            
-                            # Dynamic slope explanation
-                            slope_updown = "upward" if slope > 0 else "downward"
-                            trend_highlow = "higher" if slope > 0 else "lower"
-                            slope_text = f"Because the trendline slopes **{slope_updown}**, then higher **{x_label}** is generally associated with **{trend_highlow}** **{y_label}**."
-
-                            if r_squared >= 0.8:
-                                interp_body = f"{x_short} is a highly reliable predictor of {y_short}. Signal timing adjustments targeting {x_short} are very likely to produce measurable improvements in {y_short}."
-                            elif r_squared >= 0.6:
-                                interp_body = f"{x_short} shows a meaningful correlation with {y_short}. Engineers should prioritize {x_short} when optimizing signal timing plans to impact {y_short}."
-                            elif r_squared >= 0.3:
-                                interp_body = f"While {x_short} is a significant factor, other variables like intersection geometry, signal phasing, or pedestrian activity also play major roles."
-                            else:
-                                interp_body = f"{x_short} does not strongly predict {y_short} across this corridor. Consider investigating other variables or looking at intersection-specific issues."
-
-                            st_func(f"{interp_head} {base_msg} {slope_text} {interp_body}")
-
-                            # Dots interpretation
-                            y_eval = "worse-than-expected" if ("Delay" in y_label or "Split Failures" in y_label) else "better-than-expected"
-                            opposite_eval = "better-than-expected" if y_eval == "worse-than-expected" else "worse-than-expected"
-
-                            st.markdown(f"""
-                            **Reading the Dots (Relative to Trend):**
-                            *   A dot **above** the trendline means the approach has higher **{y_short}** than predicted for its **{x_short}** ({y_eval}).
-                            *   A dot **below** the trendline means the approach has lower **{y_short}** than predicted for its **{x_short}** ({opposite_eval}).
-                            """)
-
-                            # Ops units (+10% AOG)
-                            if x_label == "Arrivals on Green (%)":
-                                change_y = slope * 0.10
-                                direction = "higher" if change_y > 0 else "lower"
-                                abs_change = abs(change_y)
-
-                                if "Delay" in y_label:
-                                    val_str = f"{abs_change:.1f} seconds"
-                                elif "Arrivals on Green" in y_label or "Split Failures" in y_label:
-                                    val_str = f"{abs_change*100:.1f} percentage points"
+    
+                        st.plotly_chart(fig_reg, use_container_width=True)
+    
+                        # Statistical Results
+                        if has_trendline:
+                            st.markdown("---")
+                            st.subheader("Statistical Results & Interpretation")
+    
+                            r_percent = r_squared * 100
+                            stat_col1, stat_col2 = st.columns([1, 2])
+    
+                            with stat_col1:
+                                # --- Dynamic R2 Styling & Card ---
+                                if r_squared >= 0.8:
+                                    r2_color, r2_label, st_func = "#28a745", "Very Strong", st.success
+                                    interp_head = "🟢 **Very Strong Relationship:**"
+                                elif r_squared >= 0.6:
+                                    r2_color, r2_label, st_func = "#ffc107", "Strong", st.warning
+                                    interp_head = "🟡 **Strong Relationship:**"
+                                elif r_squared >= 0.3:
+                                    r2_color, r2_label, st_func = "#fd7e14", "Moderate", st.warning
+                                    interp_head = "🟠 **Moderate Relationship:**"
                                 else:
-                                    val_str = f"{abs_change:.2f}"
-
-                                st.success(f"**Practical Impact:** Every **+10%** increase in Arrivals on Green is associated with about **{val_str} {direction}** {y_short} on average.")
-                                st.caption("_Note: This represents a statistical association across the corridor, not absolute proof of causation. Other factors like geometry, volumes, and spillback also affect outcomes._")
-
-                    st.markdown("---")
-                    with st.expander("Regression Dictionary", expanded=False):
-                        st.markdown("""
-                        *   **Independent Variable:** An independent variable is the factor that a researcher changes/manipulates to test its effect on the dependent variable.
-                        *   **Dependent Variable:** A dependent variable depends on the independent variable for changes in response or outcome.
-                        *   **Each Dot:** Represents one "approach" (a specific direction at a specific intersection, e.g., Fred Waring & Warner — Eastbound).
-                        *   **The Trendline (Dashed Line):** Represents the "best-fit" linear relationship between your chosen variables. It shows the general corridor-wide trend.
-                        *   **R² (Coefficient of Determination):** A statistical measure of how well the independent variable (X) explains the variation in the dependent variable (Y).
-                        *   **Goal:** Use this to identify which intersections are performing better or worse than the corridor average and to predict how changes in one metric (like Volume) might impact another (like Delay).
-                        """)
-
-            else:
-                st.warning("No data available for corridor-wide regression analysis.")
-
+                                    r2_color, r2_label, st_func = "#dc3545", "Weak", st.error
+                                    interp_head = "🔴 **Weak Relationship:**"
+    
+                                r2_html = f"""<div style="background: {r2_color}15; padding: 24px; border-radius: 15px; border: 1px solid {r2_color}44; text-align: center; margin-bottom: 20px;">
+    <div style="font-size: 0.85rem; color: var(--text-color); opacity: 0.7; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px;">Relationship Strength (R²)</div>
+    <div style="font-size: 3.5rem; font-weight: 900; color: {r2_color}; line-height: 1; margin: 0;">{r_squared:.3f}</div>
+    <div style="font-size: 1.25rem; font-weight: 700; color: {r2_color}; margin-top: 10px;">{r2_label}</div>
+    </div>"""
+                                st.markdown(r2_html, unsafe_allow_html=True)
+    
+                                # Predictive Equation Label
+                                st.write("**Trendline Equation:**")
+                                # Simple y = mx + b form
+                                y_short = y_label.split(" (")[0]
+                                x_short = x_label.split(" (")[0]
+                                sign = "+" if intercept >= 0 else "-"
+                                st.code(f"{y_short} = ({slope:.2f} × {x_short}) {sign} {abs(intercept):.2f}", language="python")
+    
+                                slope_dir = "Positive" if slope > 0 else "Negative"
+                                slope_desc = "higher X tends to correspond to higher Y" if slope > 0 else "higher X tends to correspond to lower Y"
+                                st.markdown(f"**Slope:** {slope_dir}")
+                                st.caption(slope_desc)
+    
+                            with stat_col2:
+                                # Interpretation wording requested by user
+                                base_msg = f"An R-Square value of **{r_squared:.3f}** means that **{x_label}** is responsible for approximately **{r_percent:.1f}%** of the observed variation in **{y_label}** across this corridor."
+                                
+                                # Dynamic slope explanation
+                                slope_updown = "upward" if slope > 0 else "downward"
+                                trend_highlow = "higher" if slope > 0 else "lower"
+                                slope_text = f"Because the trendline slopes **{slope_updown}**, then higher **{x_label}** is generally associated with **{trend_highlow}** **{y_label}**."
+    
+                                if r_squared >= 0.8:
+                                    interp_body = f"{x_short} is a highly reliable predictor of {y_short}. Signal timing adjustments targeting {x_short} are very likely to produce measurable improvements in {y_short}."
+                                elif r_squared >= 0.6:
+                                    interp_body = f"{x_short} shows a meaningful correlation with {y_short}. Engineers should prioritize {x_short} when optimizing signal timing plans to impact {y_short}."
+                                elif r_squared >= 0.3:
+                                    interp_body = f"While {x_short} is a significant factor, other variables like intersection geometry, signal phasing, or pedestrian activity also play major roles."
+                                else:
+                                    interp_body = f"{x_short} does not strongly predict {y_short} across this corridor. Consider investigating other variables or looking at intersection-specific issues."
+    
+                                st_func(f"{interp_head} {base_msg} {slope_text} {interp_body}")
+    
+                                # Dots interpretation
+                                y_eval = "worse-than-expected" if ("Delay" in y_label or "Split Failures" in y_label) else "better-than-expected"
+                                opposite_eval = "better-than-expected" if y_eval == "worse-than-expected" else "worse-than-expected"
+    
+                                st.markdown(f"""
+                                **Reading the Dots (Relative to Trend):**
+                                *   A dot **above** the trendline means the approach has higher **{y_short}** than predicted for its **{x_short}** ({y_eval}).
+                                *   A dot **below** the trendline means the approach has lower **{y_short}** than predicted for its **{x_short}** ({opposite_eval}).
+                                """)
+    
+                                # Ops units (+10% AOG)
+                                if x_label == "Arrivals on Green (%)":
+                                    change_y = slope * 0.10
+                                    direction = "higher" if change_y > 0 else "lower"
+                                    abs_change = abs(change_y)
+    
+                                    if "Delay" in y_label:
+                                        val_str = f"{abs_change:.1f} seconds"
+                                    elif "Arrivals on Green" in y_label or "Split Failures" in y_label:
+                                        val_str = f"{abs_change*100:.1f} percentage points"
+                                    else:
+                                        val_str = f"{abs_change:.2f}"
+    
+                                    st.success(f"**Practical Impact:** Every **+10%** increase in Arrivals on Green is associated with about **{val_str} {direction}** {y_short} on average.")
+                                    st.caption("_Note: This represents a statistical association across the corridor, not absolute proof of causation. Other factors like geometry, volumes, and spillback also affect outcomes._")
+    
+                        st.markdown("---")
+                        with st.expander("Regression Dictionary", expanded=False):
+                            st.markdown("""
+                            *   **Independent Variable:** An independent variable is the factor that a researcher changes/manipulates to test its effect on the dependent variable.
+                            *   **Dependent Variable:** A dependent variable depends on the independent variable for changes in response or outcome.
+                            *   **Each Dot:** Represents one "approach" (a specific direction at a specific intersection, e.g., Fred Waring & Warner — Eastbound).
+                            *   **The Trendline (Dashed Line):** Represents the "best-fit" linear relationship between your chosen variables. It shows the general corridor-wide trend.
+                            *   **R² (Coefficient of Determination):** A statistical measure of how well the independent variable (X) explains the variation in the dependent variable (Y).
+                            *   **Goal:** Use this to identify which intersections are performing better or worse than the corridor average and to predict how changes in one metric (like Volume) might impact another (like Delay).
+                            """)
+    
+                else:
+                    st.warning("No data available for corridor-wide regression analysis.")
+    
         with tab3:
-            render_apples_tab(
-                registry=INTERSECTION_REGISTRY,
-                load_data_func=load_data,
-                get_meta_value_func=get_meta_value,
-                direction_map=DIRECTION_MAP,
-                direction_colors=DIRECTION_COLORS
-            )
+            if analysis_mode == "Apples to Apples":
+                render_apples_tab(
+                    registry=INTERSECTION_REGISTRY,
+                    load_data_func=load_data,
+                    get_meta_value_func=get_meta_value,
+                    direction_map=DIRECTION_MAP,
+                    direction_colors=DIRECTION_COLORS,
+                    manual_selection=apples_selection
+                )
 
 
 if __name__ == "__main__":
