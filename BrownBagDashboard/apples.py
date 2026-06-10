@@ -45,30 +45,33 @@ def _apply_comparison_layout(fig, y_axis_label, tickformat=None):
         height=550
     )
 
-def render_apples_tab(registry, load_data_func, get_meta_value_func, direction_map, direction_colors=None, manual_selection=None):
+def render_apples_tab(registry, get_intersection_data_func, get_meta_value_func, direction_map, direction_colors=None, manual_selection=None, load_daily_func=None):
     """
     Renders a tab for comparing two different time periods (datasets) 
     for the same intersection (Apples-to-Apples Comparison).
     """
+    import datetime
     if direction_colors is None:
         direction_colors = {}
+    
     # 1. Selection logic
-    # Find intersections that have multiple datasets for comparison
-    comparable_intersections = [i for i in registry if len(i["datasets"]) > 1]
+    # Find intersections that have multiple datasets for comparison OR daily data
+    comparable_intersections = [i for i in registry if len(i.get("datasets", [])) > 1 or i.get("daily_data", {}).get("available")]
     
     if not comparable_intersections:
-        st.info("No intersections with multiple datasets found for comparison in the current registry.")
+        st.info("No intersections with multiple datasets or daily data found for comparison.")
         return
 
     # 2. Create container for results (this will appear first in the UI)
     results_container = st.container()
 
-    # 3. Selection widgets (only shown if not provided via manual_selection)
+    # 3. Selection widgets
     if manual_selection:
         selected_label = manual_selection.get("label")
+        selected_intersection = next((i for i in comparable_intersections if i["label"] == selected_label), comparable_intersections[0])
         p1_label = manual_selection.get("p1")
         p2_label = manual_selection.get("p2")
-        selected_intersection = next((i for i in comparable_intersections if i["label"] == selected_label), comparable_intersections[0])
+        use_daily = False # Manual selection currently only supports predefined datasets
     else:
         st.markdown("---")
         st.write("### Comparison Selection")
@@ -82,11 +85,33 @@ def render_apples_tab(registry, load_data_func, get_meta_value_func, direction_m
             )
             selected_intersection = next(i for i in comparable_intersections if i["label"] == selected_label)
         
-        dataset_options = [d["date_label"] for d in selected_intersection["datasets"]]
-        with col_sel2:
-            p1_label = st.selectbox("Baseline Period (P1)", options=dataset_options, index=0)
-        with col_sel3:
-            p2_label = st.selectbox("Comparison Period (P2)", options=dataset_options, index=min(1, len(dataset_options)-1))
+        daily_config = selected_intersection.get("daily_data", {})
+        use_daily = daily_config.get("available", False)
+        
+        if use_daily:
+            min_date = datetime.datetime.strptime(daily_config["date_range"]["start"], "%Y-%m-%d").date()
+            max_date = datetime.datetime.strptime(daily_config["date_range"]["end"], "%Y-%m-%d").date()
+            
+            with col_sel2:
+                st.write("**Baseline Period (P1)**")
+                p1_start = st.date_input("Start Date (P1)", value=min_date, min_value=min_date, max_value=max_date, key="p1_start")
+                p1_end = st.date_input("End Date (P1)", value=min_date + datetime.timedelta(days=6), min_value=min_date, max_value=max_date, key="p1_end")
+                p1_label = f"{p1_start} to {p1_end}"
+            with col_sel3:
+                st.write("**Comparison Period (P2)**")
+                p2_start = st.date_input("Start Date (P2)", value=max_date - datetime.timedelta(days=6), min_value=min_date, max_value=max_date, key="p2_start")
+                p2_end = st.date_input("End Date (P2)", value=max_date, min_value=min_date, max_value=max_date, key="p2_end")
+                p2_label = f"{p2_start} to {p2_end}"
+                
+            if p1_start > p1_end or p2_start > p2_end:
+                st.error("Start date must be before or equal to end date.")
+                return
+        else:
+            dataset_options = [d["date_label"] for d in selected_intersection["datasets"]]
+            with col_sel2:
+                p1_label = st.selectbox("Baseline Period (P1)", options=dataset_options, index=0)
+            with col_sel3:
+                p2_label = st.selectbox("Comparison Period (P2)", options=dataset_options, index=min(1, len(dataset_options)-1))
 
     if p1_label == p2_label:
         st.warning("Please select two different time periods to generate a comparison.")
@@ -95,12 +120,15 @@ def render_apples_tab(registry, load_data_func, get_meta_value_func, direction_m
     # 4. Fill results container
     with results_container:
         # Data Loading
-        d1 = next(d for d in selected_intersection["datasets"] if d["date_label"] == p1_label)
-        d2 = next(d for d in selected_intersection["datasets"] if d["date_label"] == p2_label)
-
         with st.spinner(f"Loading data for {p1_label} and {p2_label}..."):
-            data1 = load_data_func(d1["url"])
-            data2 = load_data_func(d2["url"])
+            if use_daily and load_daily_func:
+                data1 = load_daily_func(daily_config, p1_start, p1_end)
+                data2 = load_daily_func(daily_config, p2_start, p2_end)
+            else:
+                d1 = next(d for d in selected_intersection["datasets"] if d["date_label"] == p1_label)
+                d2 = next(d for d in selected_intersection["datasets"] if d["date_label"] == p2_label)
+                data1 = get_intersection_data_func(selected_intersection, d1)
+                data2 = get_intersection_data_func(selected_intersection, d2)
 
         if data1 is None or data2 is None:
             st.error("Could not load data for one or both time periods. Please check the data source.")

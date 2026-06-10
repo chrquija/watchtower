@@ -4,9 +4,15 @@ import plotly.express as px
 import plotly.graph_objects as go
 import plotly.io as pio
 import io
+import requests
+import numpy as np
+import datetime
+from io import BytesIO
+from concurrent.futures import ThreadPoolExecutor
 # (no local file access or mock generation needed)
 from MapMap import render_map
 from apples import render_apples_tab
+from trends import render_trend_comparison_section, load_trend_data_preset
 from adt import ADT_REGISTRY, render_adt_tab, get_adt_export_data, get_segment_adt_dataframe, SEGMENT_REGISTRY
 # (no local file access or mock generation needed)
 
@@ -150,13 +156,617 @@ INTERSECTION_REGISTRY = [
         "datasets": [
             {
                 "date_label": "April 9 – April 15, 2025",
-                "url": "data/No.447_JacksonSt_and_Ave48/aggregated/SignalTrends_JacksonSt_and_Ave48_04092025_to_04152025_aggregated.xlsx"
+                "start_date": "2025-04-09",
+                "end_date": "2025-04-15"
             },
             {
                 "date_label": "April 8 – April 14, 2026",
-                "url": "data/No.447_JacksonSt_and_Ave48/aggregated/SignalTrends_JacksonSt_and_Ave48_04082026_to_04142026_aggregated.xlsx"
+                "start_date": "2026-04-08",
+                "end_date": "2026-04-14"
             }
-        ]
+        ],
+        "daily_data": {
+            "available": True,
+            "base_url": "https://raw.githubusercontent.com/chrquija/BrownBag_Dashboard/main/data/No.447_JacksonSt_and_Ave48/J.S._A48.1d/",
+            "file_pattern": "SignalTrends_JacksonSt_and_Ave48_{date}.xlsx",
+            "date_format": "%m%d%Y",
+            "date_range": {
+                "start": "2025-04-09",
+                "end": "2026-04-15"
+            },
+            "comparison_windows": {
+                "Day 1: Wednesday": {
+                    "2026": ["2026-04-08"],
+                    "2025": ["2025-04-09"]
+                },
+                "Day 2: Thursday": {
+                    "2026": ["2026-04-09"],
+                    "2025": ["2025-04-10"]
+                },
+                "Day 3: Friday": {
+                    "2026": ["2026-04-10"],
+                    "2025": ["2025-04-11"]
+                },
+                "Day 4: Saturday": {
+                    "2026": ["2026-04-11"],
+                    "2025": ["2025-04-12"]
+                },
+                "Day 5: Sunday": {
+                    "2026": ["2026-04-12"],
+                    "2025": ["2025-04-13"]
+                },
+                "Day 6: Monday": {
+                    "2026": ["2026-04-13"],
+                    "2025": ["2025-04-14"]
+                },
+                "Day 7: Tuesday": {
+                    "2026": ["2026-04-14"],
+                    "2025": ["2025-04-15"]
+                },
+                "Full Week: Wed–Tues": {
+                    "2026": ["2026-04-08", "2026-04-09", "2026-04-10", "2026-04-11", "2026-04-12", "2026-04-13", "2026-04-14"],
+                    "2025": ["2025-04-09", "2025-04-10", "2025-04-11", "2025-04-12", "2025-04-13", "2025-04-14", "2025-04-15"]
+                },
+                "Event Weekend: Fri–Sun": {
+                    "2026": ["2026-04-10", "2026-04-11", "2026-04-12"],
+                    "2025": ["2025-04-11", "2025-04-12", "2025-04-13"]
+                },
+                "Post-Event: Mon–Tues": {
+                    "2026": ["2026-04-13", "2026-04-14"],
+                    "2025": ["2025-04-14", "2025-04-15"]
+                }
+            }
+        }
+    },
+    {
+        "label": "Jackson & Dr Carreon Blvd",
+        "lat": 33.70771,
+        "lon": -116.21643,
+        "city": "Indio, California",
+        "corridor": "Jackson Street",
+        "datasets": [
+            {
+                "date_label": "April 9 – April 15, 2025",
+                "start_date": "2025-04-09",
+                "end_date": "2025-04-15"
+            },
+            {
+                "date_label": "April 8 – April 14, 2026",
+                "start_date": "2026-04-08",
+                "end_date": "2026-04-14"
+            }
+        ],
+        "daily_data": {
+            "available": True,
+            "base_url": "https://raw.githubusercontent.com/chrquija/BrownBag_Dashboard/main/data/No.505_JacksonSt_and_DrCarreonBlvd/J.S._Dr.C.Blv_1d/",
+            "file_pattern": "SignalTrends_JacksonSt_and_DoctorCarreonBlvd_{date}.xlsx",
+            "date_format": "%m%d%Y",
+            "date_range": {
+                "start": "2025-04-09",
+                "end": "2026-04-15"
+            },
+            "comparison_windows": {
+                "Day 1: Wednesday": {"2026": ["2026-04-08"], "2025": ["2025-04-09"]},
+                "Day 2: Thursday": {"2026": ["2026-04-09"], "2025": ["2025-04-10"]},
+                "Day 3: Friday": {"2026": ["2026-04-10"], "2025": ["2025-04-11"]},
+                "Day 4: Saturday": {"2026": ["2026-04-11"], "2025": ["2025-04-12"]},
+                "Day 5: Sunday": {"2026": ["2026-04-12"], "2025": ["2025-04-13"]},
+                "Day 6: Monday": {"2026": ["2026-04-13"], "2025": ["2025-04-14"]},
+                "Day 7: Tuesday": {"2026": ["2026-04-14"], "2025": ["2025-04-15"]},
+                "Full Week: Wed–Tues": {
+                    "2026": ["2026-04-08", "2026-04-09", "2026-04-10", "2026-04-11", "2026-04-12", "2026-04-13", "2026-04-14"],
+                    "2025": ["2025-04-09", "2025-04-10", "2025-04-11", "2025-04-12", "2025-04-13", "2025-04-14", "2025-04-15"]
+                },
+                "Event Weekend: Fri–Sun": {
+                    "2026": ["2026-04-10", "2026-04-11", "2026-04-12"],
+                    "2025": ["2025-04-11", "2025-04-12", "2025-04-13"]
+                },
+                "Post-Event: Mon–Tues": {
+                    "2026": ["2026-04-13", "2026-04-14"],
+                    "2025": ["2025-04-14", "2025-04-15"]
+                }
+            }
+        }
+    },
+    {
+        "label": "Jackson Street & Via Aldea/Date Ave",
+        "lat": 33.71135,
+        "lon": -116.21638,
+        "city": "Indio, California",
+        "corridor": "Jackson Street",
+        "datasets": [
+            {
+                "date_label": "April 9 – April 15, 2025",
+                "start_date": "2025-04-09",
+                "end_date": "2025-04-15"
+            },
+            {
+                "date_label": "April 8 – April 14, 2026",
+                "start_date": "2026-04-08",
+                "end_date": "2026-04-14"
+            }
+        ],
+        "daily_data": {
+            "available": True,
+            "base_url": "https://raw.githubusercontent.com/chrquija/BrownBag_Dashboard/main/data/No.506_JacksonSt_and_DateAve/1d/",
+            "file_pattern": "SignalTrends_JacksonSt_and_ViaAldea_DateAve_{date}.xlsx",
+            "date_format": "%m%d%Y",
+            "date_range": {
+                "start": "2025-04-09",
+                "end": "2026-04-14"
+            },
+            "comparison_windows": {
+                "Day 1: Wednesday": {"2026": ["2026-04-08"], "2025": ["2025-04-09"]},
+                "Day 2: Thursday": {"2026": ["2026-04-09"], "2025": ["2025-04-10"]},
+                "Day 3: Friday": {"2026": ["2026-04-10"], "2025": ["2025-04-11"]},
+                "Day 4: Saturday": {"2026": ["2026-04-11"], "2025": ["2025-04-12"]},
+                "Day 5: Sunday": {"2026": ["2026-04-12"], "2025": ["2025-04-13"]},
+                "Day 6: Monday": {"2026": ["2026-04-13"], "2025": ["2025-04-14"]},
+                "Day 7: Tuesday": {"2026": ["2026-04-14"], "2025": ["2025-04-15"]},
+                "Full Week: Wed–Tues": {
+                    "2026": ["2026-04-08", "2026-04-09", "2026-04-10", "2026-04-11", "2026-04-12", "2026-04-13", "2026-04-14"],
+                    "2025": ["2025-04-09", "2025-04-10", "2025-04-11", "2025-04-12", "2025-04-13", "2025-04-14", "2025-04-15"]
+                },
+                "Event Weekend: Fri–Sun": {
+                    "2026": ["2026-04-10", "2026-04-11", "2026-04-12"],
+                    "2025": ["2025-04-11", "2025-04-12", "2025-04-13"]
+                },
+                "Post-Event: Mon–Tues": {
+                    "2026": ["2026-04-13", "2026-04-14"],
+                    "2025": ["2025-04-14", "2025-04-15"]
+                }
+            }
+        }
+    },
+    {
+        "label": "Jackson & Ave 46",
+        "lat": 33.71487709,
+        "lon": -116.2162638,
+        "city": "Indio, California",
+        "corridor": "Jackson Street",
+        "datasets": [
+            {
+                "date_label": "April 9 – April 15, 2025",
+                "start_date": "2025-04-09",
+                "end_date": "2025-04-15"
+            },
+            {
+                "date_label": "April 8 – April 14, 2026",
+                "start_date": "2026-04-08",
+                "end_date": "2026-04-14"
+            }
+        ],
+        "daily_data": {
+            "available": True,
+            "base_url": "https://raw.githubusercontent.com/chrquija/BrownBag_Dashboard/main/data/New._Avenue46_and_JacksonSt/1d/",
+            "file_pattern": "SignalTrends_JacksonSt_and_Avenue46_{date}.xlsx",
+            "date_format": "%m%d%Y",
+            "date_range": {
+                "start": "2025-04-09",
+                "end": "2026-04-14"
+            },
+            "comparison_windows": {
+                "Day 1: Wednesday": {"2026": ["2026-04-08"], "2025": ["2025-04-09"]},
+                "Day 2: Thursday": {"2026": ["2026-04-09"], "2025": ["2025-04-10"]},
+                "Day 3: Friday": {"2026": ["2026-04-10"], "2025": ["2025-04-11"]},
+                "Day 4: Saturday": {"2026": ["2026-04-11"], "2025": ["2025-04-12"]},
+                "Day 5: Sunday": {"2026": ["2026-04-12"], "2025": ["2025-04-13"]},
+                "Day 6: Monday": {"2026": ["2026-04-13"], "2025": ["2025-04-14"]},
+                "Day 7: Tuesday": {"2026": ["2026-04-14"], "2025": ["2025-04-15"]},
+                "Full Week: Wed–Tues": {
+                    "2026": ["2026-04-08", "2026-04-09", "2026-04-10", "2026-04-11", "2026-04-12", "2026-04-13", "2026-04-14"],
+                    "2025": ["2025-04-09", "2025-04-10", "2025-04-11", "2025-04-12", "2025-04-13", "2025-04-14", "2025-04-15"]
+                },
+                "Event Weekend: Fri–Sun": {
+                    "2026": ["2026-04-10", "2026-04-11", "2026-04-12"],
+                    "2025": ["2025-04-11", "2025-04-12", "2025-04-13"]
+                },
+                "Post-Event: Mon–Tues": {
+                    "2026": ["2026-04-13", "2026-04-14"],
+                    "2025": ["2025-04-14", "2025-04-15"]
+                }
+            }
+        }
+    },
+    {
+        "label": "Jackson & Requa",
+        "lat": 33.71745,
+        "lon": -116.21618,
+        "city": "Indio, California",
+        "corridor": "Jackson Street",
+        "datasets": [
+            {
+                "date_label": "April 9 – April 15, 2025",
+                "start_date": "2025-04-09",
+                "end_date": "2025-04-15"
+            },
+            {
+                "date_label": "April 8 – April 14, 2026",
+                "start_date": "2026-04-08",
+                "end_date": "2026-04-14"
+            }
+        ],
+        "daily_data": {
+            "available": True,
+            "base_url": "https://raw.githubusercontent.com/chrquija/BrownBag_Dashboard/main/data/No.507_JacksonSt_and_RequaAve/1d/",
+            "file_pattern": "SignalTrends_JacksonSt_and_RequaAve_{date}.xlsx",
+            "date_format": "%m%d%Y",
+            "date_range": {
+                "start": "2025-04-09",
+                "end": "2026-04-14"
+            },
+            "comparison_windows": {
+                "Day 1: Wednesday": {"2026": ["2026-04-08"], "2025": ["2025-04-09"]},
+                "Day 2: Thursday": {"2026": ["2026-04-09"], "2025": ["2025-04-10"]},
+                "Day 3: Friday": {"2026": ["2026-04-10"], "2025": ["2025-04-11"]},
+                "Day 4: Saturday": {"2026": ["2026-04-11"], "2025": ["2025-04-12"]},
+                "Day 5: Sunday": {"2026": ["2026-04-12"], "2025": ["2025-04-13"]},
+                "Day 6: Monday": {"2026": ["2026-04-13"], "2025": ["2025-04-14"]},
+                "Day 7: Tuesday": {"2026": ["2026-04-14"], "2025": ["2025-04-15"]},
+                "Full Week: Wed–Tues": {
+                    "2026": ["2026-04-08", "2026-04-09", "2026-04-10", "2026-04-11", "2026-04-12", "2026-04-13", "2026-04-14"],
+                    "2025": ["2025-04-09", "2025-04-10", "2025-04-11", "2025-04-12", "2025-04-13", "2025-04-14", "2025-04-15"]
+                },
+                "Event Weekend: Fri–Sun": {
+                    "2026": ["2026-04-10", "2026-04-11", "2026-04-12"],
+                    "2025": ["2025-04-11", "2025-04-12", "2025-04-13"]
+                },
+                "Post-Event: Mon–Tues": {
+                    "2026": ["2026-04-13", "2026-04-14"],
+                    "2025": ["2025-04-14", "2025-04-15"]
+                }
+            }
+        }
+    },
+    {
+        "label": "Jackson & Civic Center Dr",
+        "lat": 33.71865,
+        "lon": -116.21617,
+        "city": "Indio, California",
+        "corridor": "Jackson Street",
+        "datasets": [
+            {
+                "date_label": "April 9 – April 15, 2025",
+                "start_date": "2025-04-09",
+                "end_date": "2025-04-15"
+            },
+            {
+                "date_label": "April 8 – April 14, 2026",
+                "start_date": "2026-04-08",
+                "end_date": "2026-04-14"
+            }
+        ],
+        "daily_data": {
+            "available": True,
+            "base_url": "https://raw.githubusercontent.com/chrquija/BrownBag_Dashboard/main/data/No.508_JacksonSt_and_CivicCenterDr/1d/",
+            "file_pattern": "SignalTrends_JacksonSt_and_CivicCenterDr_{date}.xlsx",
+            "date_format": "%m%d%Y",
+            "date_range": {
+                "start": "2025-04-09",
+                "end": "2026-04-14"
+            },
+            "comparison_windows": {
+                "Day 1: Wednesday": {"2026": ["2026-04-08"], "2025": ["2025-04-09"]},
+                "Day 2: Thursday": {"2026": ["2026-04-09"], "2025": ["2025-04-10"]},
+                "Day 3: Friday": {"2026": ["2026-04-10"], "2025": ["2025-04-11"]},
+                "Day 4: Saturday": {"2026": ["2026-04-11"], "2025": ["2025-04-12"]},
+                "Day 5: Sunday": {"2026": ["2026-04-12"], "2025": ["2025-04-13"]},
+                "Day 6: Monday": {"2026": ["2026-04-13"], "2025": ["2025-04-14"]},
+                "Day 7: Tuesday": {"2026": ["2026-04-14"], "2025": ["2025-04-15"]},
+                "Full Week: Wed–Tues": {
+                    "2026": ["2026-04-08", "2026-04-09", "2026-04-10", "2026-04-11", "2026-04-12", "2026-04-13", "2026-04-14"],
+                    "2025": ["2025-04-09", "2025-04-10", "2025-04-11", "2025-04-12", "2025-04-13", "2025-04-14", "2025-04-15"]
+                },
+                "Event Weekend: Fri–Sun": {
+                    "2026": ["2026-04-10", "2026-04-11", "2026-04-12"],
+                    "2025": ["2025-04-11", "2025-04-12", "2025-04-13"]
+                },
+                "Post-Event: Mon–Tues": {
+                    "2026": ["2026-04-13", "2026-04-14"],
+                    "2025": ["2025-04-14", "2025-04-15"]
+                }
+            }
+        }
+    },
+    {
+        "label": "Jackson & Ave 45",
+        "lat": 33.72279,
+        "lon": -116.21627,
+        "city": "Indio, California",
+        "corridor": "Jackson Street",
+        "datasets": [
+            {
+                "date_label": "April 9 – April 15, 2025",
+                "start_date": "2025-04-09",
+                "end_date": "2025-04-15"
+            },
+            {
+                "date_label": "April 8 – April 14, 2026",
+                "start_date": "2026-04-08",
+                "end_date": "2026-04-14"
+            }
+        ],
+        "daily_data": {
+            "available": True,
+            "base_url": "https://raw.githubusercontent.com/chrquija/BrownBag_Dashboard/main/data/No.509_JacksonSt_and_Ave45/1d/",
+            "file_pattern": "SignalTrends_JacksonSt_and_Avenue45_{date}.xlsx",
+            "date_format": "%m%d%Y",
+            "date_range": {
+                "start": "2025-04-09",
+                "end": "2026-04-14"
+            },
+            "comparison_windows": {
+                "Day 1: Wednesday": {"2026": ["2026-04-08"], "2025": ["2025-04-09"]},
+                "Day 2: Thursday": {"2026": ["2026-04-09"], "2025": ["2025-04-10"]},
+                "Day 3: Friday": {"2026": ["2026-04-10"], "2025": ["2025-04-11"]},
+                "Day 4: Saturday": {"2026": ["2026-04-11"], "2025": ["2025-04-12"]},
+                "Day 5: Sunday": {"2026": ["2026-04-12"], "2025": ["2025-04-13"]},
+                "Day 6: Monday": {"2026": ["2026-04-13"], "2025": ["2025-04-14"]},
+                "Day 7: Tuesday": {"2026": ["2026-04-14"], "2025": ["2025-04-15"]},
+                "Full Week: Wed–Tues": {
+                    "2026": ["2026-04-08", "2026-04-09", "2026-04-10", "2026-04-11", "2026-04-12", "2026-04-13", "2026-04-14"],
+                    "2025": ["2025-04-09", "2025-04-10", "2025-04-11", "2025-04-12", "2025-04-13", "2025-04-14", "2025-04-15"]
+                },
+                "Event Weekend: Fri–Sun": {
+                    "2026": ["2026-04-10", "2026-04-11", "2026-04-12"],
+                    "2025": ["2025-04-11", "2025-04-12", "2025-04-13"]
+                },
+                "Post-Event: Mon–Tues": {
+                    "2026": ["2026-04-13", "2026-04-14"],
+                    "2025": ["2025-04-14", "2025-04-15"]
+                }
+            }
+        }
+    },
+    {
+        "label": "Jackson / Market / Dillon",
+        "lat": 33.72583,
+        "lon": -116.21631,
+        "city": "Indio, California",
+        "corridor": "Jackson Street",
+        "datasets": [
+            {
+                "date_label": "April 9 – April 15, 2025",
+                "start_date": "2025-04-09",
+                "end_date": "2025-04-15"
+            },
+            {
+                "date_label": "April 8 – April 14, 2026",
+                "start_date": "2026-04-08",
+                "end_date": "2026-04-14"
+            }
+        ],
+        "daily_data": {
+            "available": True,
+            "base_url": "https://raw.githubusercontent.com/chrquija/BrownBag_Dashboard/main/data/No.510_JacksonSt_and_DillonAve/1d/",
+            "file_pattern": "SignalTrends_JacksonSt_and_MarketSt_DillonAve_{date}.xlsx",
+            "date_format": "%m%d%Y",
+            "date_range": {
+                "start": "2025-04-09",
+                "end": "2026-04-14"
+            },
+            "comparison_windows": {
+                "Day 1: Wednesday": {"2026": ["2026-04-08"], "2025": ["2025-04-09"]},
+                "Day 2: Thursday": {"2026": ["2026-04-09"], "2025": ["2025-04-10"]},
+                "Day 3: Friday": {"2026": ["2026-04-10"], "2025": ["2025-04-11"]},
+                "Day 4: Saturday": {"2026": ["2026-04-11"], "2025": ["2025-04-12"]},
+                "Day 5: Sunday": {"2026": ["2026-04-12"], "2025": ["2025-04-13"]},
+                "Day 6: Monday": {"2026": ["2026-04-13"], "2025": ["2025-04-14"]},
+                "Day 7: Tuesday": {"2026": ["2026-04-14"], "2025": ["2025-04-15"]},
+                "Full Week: Wed–Tues": {
+                    "2026": ["2026-04-08", "2026-04-09", "2026-04-10", "2026-04-11", "2026-04-12", "2026-04-13", "2026-04-14"],
+                    "2025": ["2025-04-09", "2025-04-10", "2025-04-11", "2025-04-12", "2025-04-13", "2025-04-14", "2025-04-15"]
+                },
+                "Event Weekend: Fri–Sun": {
+                    "2026": ["2026-04-10", "2026-04-11", "2026-04-12"],
+                    "2025": ["2025-04-11", "2025-04-12", "2025-04-13"]
+                },
+                "Post-Event: Mon–Tues": {
+                    "2026": ["2026-04-13", "2026-04-14"],
+                    "2025": ["2025-04-14", "2025-04-15"]
+                }
+            }
+        }
+    },
+    {
+        "label": "Jackson & Ave 44",
+        "lat": 33.72944,
+        "lon": -116.21631,
+        "city": "Indio, California",
+        "corridor": "Jackson Street",
+        "datasets": [
+            {
+                "date_label": "April 9 – April 15, 2025",
+                "start_date": "2025-04-09",
+                "end_date": "2025-04-15"
+            },
+            {
+                "date_label": "April 8 – April 14, 2026",
+                "start_date": "2026-04-08",
+                "end_date": "2026-04-14"
+            }
+        ],
+        "daily_data": {
+            "available": True,
+            "base_url": "https://raw.githubusercontent.com/chrquija/BrownBag_Dashboard/main/data/No.511_JacksonSt_and_Ave44/1d/",
+            "file_pattern": "SignalTrends_JacksonSt_and_Avenue44_{date}.xlsx",
+            "date_format": "%m%d%Y",
+            "date_range": {
+                "start": "2025-04-09",
+                "end": "2026-04-14"
+            },
+            "comparison_windows": {
+                "Day 1: Wednesday": {"2026": ["2026-04-08"], "2025": ["2025-04-09"]},
+                "Day 2: Thursday": {"2026": ["2026-04-09"], "2025": ["2025-04-10"]},
+                "Day 3: Friday": {"2026": ["2026-04-10"], "2025": ["2025-04-11"]},
+                "Day 4: Saturday": {"2026": ["2026-04-11"], "2025": ["2025-04-12"]},
+                "Day 5: Sunday": {"2026": ["2026-04-12"], "2025": ["2025-04-13"]},
+                "Day 6: Monday": {"2026": ["2026-04-13"], "2025": ["2025-04-14"]},
+                "Day 7: Tuesday": {"2026": ["2026-04-14"], "2025": ["2025-04-15"]},
+                "Full Week: Wed–Tues": {
+                    "2026": ["2026-04-08", "2026-04-09", "2026-04-10", "2026-04-11", "2026-04-12", "2026-04-13", "2026-04-14"],
+                    "2025": ["2025-04-09", "2025-04-10", "2025-04-11", "2025-04-12", "2025-04-13", "2025-04-14", "2025-04-15"]
+                },
+                "Event Weekend: Fri–Sun": {
+                    "2026": ["2026-04-10", "2026-04-11", "2026-04-12"],
+                    "2025": ["2025-04-11", "2025-04-12", "2025-04-13"]
+                },
+                "Post-Event: Mon–Tues": {
+                    "2026": ["2026-04-13", "2026-04-14"],
+                    "2025": ["2025-04-14", "2025-04-15"]
+                }
+            }
+        }
+    },
+    {
+        "label": "Jackson & Kenner",
+        "lat": 33.73308,
+        "lon": -116.2164,
+        "city": "Indio, California",
+        "corridor": "Jackson Street",
+        "datasets": [
+            {
+                "date_label": "April 9 – April 15, 2025",
+                "start_date": "2025-04-09",
+                "end_date": "2025-04-15"
+            },
+            {
+                "date_label": "April 8 – April 14, 2026",
+                "start_date": "2026-04-08",
+                "end_date": "2026-04-14"
+            }
+        ],
+        "daily_data": {
+            "available": True,
+            "base_url": "https://raw.githubusercontent.com/chrquija/BrownBag_Dashboard/main/data/No.512_JacksonSt_and_KennerAve/1d/",
+            "file_pattern": "SignalTrends_JacksonSt_and_KennerAve_{date}.xlsx",
+            "date_format": "%m%d%Y",
+            "date_range": {
+                "start": "2025-04-09",
+                "end": "2026-04-14"
+            },
+            "comparison_windows": {
+                "Day 1: Wednesday": {"2026": ["2026-04-08"], "2025": ["2025-04-09"]},
+                "Day 2: Thursday": {"2026": ["2026-04-09"], "2025": ["2025-04-10"]},
+                "Day 3: Friday": {"2026": ["2026-04-10"], "2025": ["2025-04-11"]},
+                "Day 4: Saturday": {"2026": ["2026-04-11"], "2025": ["2025-04-12"]},
+                "Day 5: Sunday": {"2026": ["2026-04-12"], "2025": ["2025-04-13"]},
+                "Day 6: Monday": {"2026": ["2026-04-13"], "2025": ["2025-04-14"]},
+                "Day 7: Tuesday": {"2026": ["2026-04-14"], "2025": ["2025-04-15"]},
+                "Full Week: Wed–Tues": {
+                    "2026": ["2026-04-08", "2026-04-09", "2026-04-10", "2026-04-11", "2026-04-12", "2026-04-13", "2026-04-14"],
+                    "2025": ["2025-04-09", "2025-04-10", "2025-04-11", "2025-04-12", "2025-04-13", "2025-04-14", "2025-04-15"]
+                },
+                "Event Weekend: Fri–Sun": {
+                    "2026": ["2026-04-10", "2026-04-11", "2026-04-12"],
+                    "2025": ["2025-04-11", "2025-04-12", "2025-04-13"]
+                },
+                "Post-Event: Mon–Tues": {
+                    "2026": ["2026-04-13", "2026-04-14"],
+                    "2025": ["2025-04-14", "2025-04-15"]
+                }
+            }
+        }
+    },
+    {
+        "label": "Jackson & I-10 Eastbound Ramps",
+        "lat": 33.73714,
+        "lon": -116.21652,
+        "city": "Indio, California",
+        "corridor": "Jackson Street",
+        "datasets": [
+            {
+                "date_label": "April 9 – April 15, 2025",
+                "start_date": "2025-04-09",
+                "end_date": "2025-04-15"
+            },
+            {
+                "date_label": "April 8 – April 14, 2026",
+                "start_date": "2026-04-08",
+                "end_date": "2026-04-14"
+            }
+        ],
+        "daily_data": {
+            "available": True,
+            "base_url": "https://raw.githubusercontent.com/chrquija/BrownBag_Dashboard/main/data/No.513_I-10EBRamps_and_JacksonSt/1d/",
+            "file_pattern": "SignalTrends_JacksonSt_and_I-10EBRamp_{date}.xlsx",
+            "date_format": "%m%d%Y",
+            "date_range": {
+                "start": "2025-04-09",
+                "end": "2026-04-14"
+            },
+            "comparison_windows": {
+                "Day 1: Wednesday": {"2026": ["2026-04-08"], "2025": ["2025-04-09"]},
+                "Day 2: Thursday": {"2026": ["2026-04-09"], "2025": ["2025-04-10"]},
+                "Day 3: Friday": {"2026": ["2026-04-10"], "2025": ["2025-04-11"]},
+                "Day 4: Saturday": {"2026": ["2026-04-11"], "2025": ["2025-04-12"]},
+                "Day 5: Sunday": {"2026": ["2026-04-12"], "2025": ["2025-04-13"]},
+                "Day 6: Monday": {"2026": ["2026-04-13"], "2025": ["2025-04-14"]},
+                "Day 7: Tuesday": {"2026": ["2026-04-14"], "2025": ["2025-04-15"]},
+                "Full Week: Wed–Tues": {
+                    "2026": ["2026-04-08", "2026-04-09", "2026-04-10", "2026-04-11", "2026-04-12", "2026-04-13", "2026-04-14"],
+                    "2025": ["2025-04-09", "2025-04-10", "2025-04-11", "2025-04-12", "2025-04-13", "2025-04-14", "2025-04-15"]
+                },
+                "Event Weekend: Fri–Sun": {
+                    "2026": ["2026-04-10", "2026-04-11", "2026-04-12"],
+                    "2025": ["2025-04-11", "2025-04-12", "2025-04-13"]
+                },
+                "Post-Event: Mon–Tues": {
+                    "2026": ["2026-04-13", "2026-04-14"],
+                    "2025": ["2025-04-14", "2025-04-15"]
+                }
+            }
+        }
+    },
+    {
+        "label": "Jackson & I-10 Westbound Ramps",
+        "lat": 33.73886,
+        "lon": -116.21657,
+        "city": "Indio, California",
+        "corridor": "Jackson Street",
+        "datasets": [
+            {
+                "date_label": "April 9 – April 15, 2025",
+                "start_date": "2025-04-09",
+                "end_date": "2025-04-15"
+            },
+            {
+                "date_label": "April 8 – April 14, 2026",
+                "start_date": "2026-04-08",
+                "end_date": "2026-04-14"
+            }
+        ],
+        "daily_data": {
+            "available": True,
+            "base_url": "https://raw.githubusercontent.com/chrquija/BrownBag_Dashboard/main/data/No.514_I-10WBRamps_and_JacksonSt/1d/",
+            "file_pattern": "SignalTrends_JacksonSt_and_I-10WBRamp_{date}.xlsx",
+            "date_format": "%m%d%Y",
+            "date_range": {
+                "start": "2025-04-09",
+                "end": "2026-04-14"
+            },
+            "comparison_windows": {
+                "Day 1: Wednesday": {"2026": ["2026-04-08"], "2025": ["2025-04-09"]},
+                "Day 2: Thursday": {"2026": ["2026-04-09"], "2025": ["2025-04-10"]},
+                "Day 3: Friday": {"2026": ["2026-04-10"], "2025": ["2025-04-11"]},
+                "Day 4: Saturday": {"2026": ["2026-04-11"], "2025": ["2025-04-12"]},
+                "Day 5: Sunday": {"2026": ["2026-04-12"], "2025": ["2025-04-13"]},
+                "Day 6: Monday": {"2026": ["2026-04-13"], "2025": ["2025-04-14"]},
+                "Day 7: Tuesday": {"2026": ["2026-04-14"], "2025": ["2025-04-15"]},
+                "Full Week: Wed–Tues": {
+                    "2026": ["2026-04-08", "2026-04-09", "2026-04-10", "2026-04-11", "2026-04-12", "2026-04-13", "2026-04-14"],
+                    "2025": ["2025-04-09", "2025-04-10", "2025-04-11", "2025-04-12", "2025-04-13", "2025-04-14", "2025-04-15"]
+                },
+                "Event Weekend: Fri–Sun": {
+                    "2026": ["2026-04-10", "2026-04-11", "2026-04-12"],
+                    "2025": ["2025-04-11", "2025-04-12", "2025-04-13"]
+                },
+                "Post-Event: Mon–Tues": {
+                    "2026": ["2026-04-13", "2026-04-14"],
+                    "2025": ["2025-04-14", "2025-04-15"]
+                }
+            }
+        }
     }
 ]
 
@@ -210,6 +820,16 @@ def load_data(source: str):
             return data
         return None
     except Exception as e:
+        # Graceful fallback: if it has "aggregated/" in the URL, try without it
+        if isinstance(source, str) and "/aggregated/" in source:
+            alt_url = source.replace("/aggregated/", "/")
+            try:
+                data = _read_all(alt_url)
+                if data is not None:
+                    return data
+            except Exception:
+                pass
+
         # If user provided a GitHub raw URL with refs/heads, try the simplified branch form
         if isinstance(source, str) and "refs/heads/" in source:
             alt = source.replace("refs/heads/", "")
@@ -220,7 +840,14 @@ def load_data(source: str):
                     return data
             except Exception:
                 pass
-        st.error(f"Error reading Excel file: {e}")
+        
+        # Determine error message severity
+        err_msg = str(e)
+        if "404" in err_msg:
+            # For 404s, we might want to be less alarming
+            st.warning(f"Data file not found (404) at: {source}. Please check the URL.")
+        else:
+            st.error(f"Error reading Excel file: {e}")
         return None
 
 
@@ -237,20 +864,253 @@ def get_meta_value(df_meta, key, fallback="N/A"):
     return fallback
 
 
+def normalize_dataframe_columns(df):
+    """
+    Normalizes column names from different ClearGuide export types (Daily vs Comparison)
+    to a standard set used by the dashboard visualizations.
+    """
+    if df is None or df.empty:
+        return df
+        
+    mapping = {
+        "Average Delay (s)": "Delay Range 1",
+        "Average Delay (sec)": "Delay Range 1",
+        "Average Delay": "Delay Range 1",
+        "Delay (s)": "Delay Range 1",
+        
+        "Arrivals on Green (%)": "Arrivals On Green Range 1",
+        "Arrivals On Green (%)": "Arrivals On Green Range 1",
+        "AOG (%)": "Arrivals On Green Range 1",
+        
+        "Split Failures (%)": "Split Failures Range 1",
+        "Split Failure (%)": "Split Failures Range 1",
+        "SF (%)": "Split Failures Range 1",
+        
+        "Total Vehicles": "Vehicle Samples 1",
+        "Volume": "Vehicle Samples 1",
+        "Turning Movement Range 1": "Vehicle Samples 1"
+    }
+    
+    # We want to avoid overwriting if the target already exists
+    # but prioritize the mapping if the standard name is missing.
+    actual_cols = df.columns.tolist()
+    rename_map = {}
+    for src, target in mapping.items():
+        if src in actual_cols and target not in actual_cols:
+            rename_map[src] = target
+            
+    if rename_map:
+        return df.rename(columns=rename_map)
+    return df
+
+
+def get_intersection_data(selected_intersection, dataset_entry):
+    """
+    Loads data for an intersection and specific dataset.
+    Supports direct URLs or on-the-fly daily aggregation if start_date/end_date are provided.
+    """
+    # 1. Try URL if provided
+    data = None
+    if "url" in dataset_entry:
+        data = load_data(dataset_entry["url"])
+            
+    # 2. Fallback to daily aggregation if dates are provided and daily data is available
+    if data is None and "start_date" in dataset_entry and "end_date" in dataset_entry:
+        daily_config = selected_intersection.get("daily_data", {})
+        if daily_config.get("available"):
+            try:
+                start = datetime.datetime.strptime(dataset_entry["start_date"], "%Y-%m-%d")
+                end = datetime.datetime.strptime(dataset_entry["end_date"], "%Y-%m-%d")
+                data = load_daily_data_aggregated(daily_config, start, end)
+            except Exception as e:
+                st.error(f"Error during on-the-fly aggregation: {e}")
+    
+    if data:
+        df_meta, df_int, df_app, df_mov = data
+        return (
+            df_meta, 
+            normalize_dataframe_columns(df_int), 
+            normalize_dataframe_columns(df_app), 
+            normalize_dataframe_columns(df_mov)
+        )
+                
+    return None
+
+
+@st.cache_data
+def load_daily_data_aggregated(daily_config, start_date, end_date):
+    """
+    Generates URLs for daily files, loads them, and aggregates them.
+    Reuses weighted averaging logic from aggregate_daily_data.py.
+    """
+    
+    base_url = daily_config["base_url"]
+    file_pattern = daily_config["file_pattern"]
+    date_format = daily_config["date_format"]
+    
+    delta = end_date - start_date
+    dates = [start_date + datetime.timedelta(days=i) for i in range(delta.days + 1)]
+    
+    urls = []
+    for d in dates:
+        date_str = d.strftime(date_format)
+        urls.append(base_url + file_pattern.replace("{date}", date_str))
+        
+    loaded_data = []
+
+    def fetch_file(url):
+        # We try the original URL first, then try prefixes (1_, 2_, etc) if 404
+        # We use a longer timeout and handle column name variations
+        date_filename = url.split('/')[-1]
+        folder_url = url.rsplit('/', 1)[0] + '/'
+        
+        urls_to_try = [url]
+        for i in range(1, 11):
+            urls_to_try.append(folder_url + f"{i}_{date_filename}")
+
+        for target_url in urls_to_try:
+            try:
+                response = requests.get(target_url, timeout=15)
+                if response.status_code == 200:
+                    xls = pd.ExcelFile(BytesIO(response.content))
+                    
+                    # Read sheets with fallbacks
+                    def read_sheet(xls, primary_name, alt_names):
+                        try:
+                            return pd.read_excel(xls, primary_name)
+                        except ValueError:
+                            for alt in alt_names:
+                                try:
+                                    return pd.read_excel(xls, alt)
+                                except ValueError:
+                                    continue
+                        # Return empty df if not found to avoid crash during aggregation
+                        return pd.DataFrame()
+
+                    df_meta = read_sheet(xls, "Metadata", ["Meta"])
+                    df_int = read_sheet(xls, "Intersection", ["Overall"])
+                    df_app = read_sheet(xls, "By Approach", ["Approach", "Approaches"])
+                    df_mov = read_sheet(xls, "By Movement", ["Movement", "Movements"])
+
+                    if df_int.empty and df_app.empty and df_mov.empty:
+                        # If all main sheets are missing, this might be a 404 or corrupted file
+                        continue
+
+                    return {
+                        "meta": df_meta,
+                        "int": df_int,
+                        "app": df_app,
+                        "mov": df_mov,
+                        "url": target_url
+                    }
+                elif response.status_code != 404:
+                    return {"url": target_url, "status": response.status_code}
+            except Exception as e:
+                continue
+        
+        return {"url": url, "status": 404}
+
+    with ThreadPoolExecutor(max_workers=5) as executor:
+        results = list(executor.map(fetch_file, urls))
+
+    dfs_meta, dfs_int, dfs_app, dfs_mov = [], [], [], []
+    loaded_urls = []
+    
+    for r in results:
+        if "meta" in r:
+            dfs_meta.append(r["meta"])
+            dfs_int.append(r["int"])
+            dfs_app.append(r["app"])
+            dfs_mov.append(r["mov"])
+            loaded_urls.append(r["url"])
+        elif "status" in r:
+            st.warning(f"Daily file not found: {r['url'].split('/')[-1]}")
+        else:
+            st.warning(f"Error loading daily file {r['url'].split('/')[-1]}: {r['error']}")
+
+    if not loaded_urls:
+        st.error(f"No daily files found for range {start_date} to {end_date}")
+        return None
+
+    def aggregate_sheet(dfs, group_cols):
+        df_combined = pd.concat(dfs, ignore_index=True)
+        
+        # Normalize approach names before grouping to ensure consistent aggregation
+        if "Approach" in df_combined.columns:
+            df_combined["Approach"] = df_combined["Approach"].astype(str).str.strip()
+            df_combined["Approach"] = df_combined["Approach"].map(DIRECTION_MAP).fillna(df_combined["Approach"])
+            
+        numeric_cols = df_combined.select_dtypes(include=[np.number]).columns.tolist()
+        weight_col = "Vehicle Samples 1"
+        
+        if weight_col not in df_combined.columns:
+            if not group_cols:
+                return df_combined.mean(numeric_only=True).to_frame().T
+            return df_combined.groupby(group_cols, sort=False).mean(numeric_only=True).reset_index()
+
+        metrics = [c for c in numeric_cols if c != weight_col]
+        
+        def weighted_avg(group):
+            d = {}
+            total_weight = group[weight_col].sum()
+            d[weight_col] = total_weight
+            for m in metrics:
+                if total_weight > 0:
+                    valid_mask = group[m].notna() & group[weight_col].notna()
+                    if valid_mask.any():
+                        w = group.loc[valid_mask, weight_col]
+                        v = group.loc[valid_mask, m]
+                        if w.sum() > 0:
+                            d[m] = (v * w).sum() / w.sum()
+                        else:
+                            d[m] = v.mean()
+                    else:
+                        d[m] = np.nan
+                else:
+                    d[m] = group[m].mean()
+            return pd.Series(d)
+
+        if not group_cols:
+            res = weighted_avg(df_combined).to_frame().T
+        else:
+            res = df_combined.groupby(group_cols, sort=False).apply(weighted_avg, include_groups=False).reset_index()
+        
+        orig_cols = dfs[0].columns.tolist()
+        for c in orig_cols:
+            if c not in res.columns:
+                res[c] = dfs[0][c].iloc[0]
+        
+        return res[orig_cols]
+
+    agg_int = aggregate_sheet(dfs_int, [])
+    agg_app = aggregate_sheet(dfs_app, ["Approach"])
+    agg_mov = aggregate_sheet(dfs_mov, ["Approach", "Movement"])
+    
+    new_meta = dfs_meta[0].copy()
+    key_col = new_meta.columns[0]
+    val_col = new_meta.columns[1]
+    
+    start_date_mask = new_meta[key_col].astype(str).str.strip().str.lower() == "start date"
+    end_date_mask = new_meta[key_col].astype(str).str.strip().str.lower() == "end date"
+    
+    if start_date_mask.any():
+        new_meta.loc[start_date_mask, val_col] = start_date.strftime("%Y-%m-%d")
+    if end_date_mask.any():
+        new_meta.loc[end_date_mask, val_col] = end_date.strftime("%Y-%m-%d")
+    
+    return new_meta, agg_int, agg_app, agg_mov
+
+
 @st.cache_data
 def load_all_intersections_data(registry):
     """Load "By Approach" data from all intersections in the registry and combine into one DataFrame."""
-    all_app_dfs = []
-
-    # Use a placeholder for warnings to avoid showing them multiple times in a loop
-    # or if we are in a non-UI thread (though st.warning is usually fine).
-    for entry in registry:
+    
+    def fetch_intersection(entry):
         try:
-            # Use the first dataset URL for each intersection in corridor analysis
-            url = entry["datasets"][0]["url"]
-            data = load_data(url)
+            # Use get_intersection_data instead of direct load_data to support on-the-fly aggregation
+            data = get_intersection_data(entry, entry["datasets"][0])
             if data is None:
-                continue
+                return None
             _, _, df_app, _ = data
             
             # Copy to avoid modifying the cached data
@@ -264,12 +1124,19 @@ def load_all_intersections_data(registry):
             # Normalize percentage columns if they are on 0-100 scale
             for col in ["Arrivals On Green Range 1", "Split Failures Range 1"]:
                 if col in df_app.columns:
-                    if df_app[col].max() > 1:
+                    # Filter out NaN before checking max
+                    non_na_col = df_app[col].dropna()
+                    if not non_na_col.empty and non_na_col.max() > 1:
                         df_app[col] = df_app[col] / 100.0
             
-            all_app_dfs.append(df_app)
-        except Exception as e:
-            st.warning(f"Warning: Failed to load data for {entry['label']}. {e}")
+            return df_app
+        except Exception:
+            return None
+
+    with ThreadPoolExecutor(max_workers=10) as executor:
+        results = list(executor.map(fetch_intersection, registry))
+    
+    all_app_dfs = [r for r in results if r is not None]
             
     if not all_app_dfs:
         return pd.DataFrame()
@@ -308,7 +1175,7 @@ def main():
         st.session_state.analysis_mode = "Intersection Analysis"
 
     st.sidebar.markdown("## Analysis Mode")
-    analysis_mode_options = ["Intersection Analysis", "ADT Analysis", "Apples to Apples", "Corridor-Wide Regression"]
+    analysis_mode_options = ["Intersection Analysis", "ADT Analysis", "Apples to Apples", "Trend Analysis", "Corridor-Wide Regression"]
     
     # Ensure current mode is valid
     if st.session_state.analysis_mode not in analysis_mode_options:
@@ -326,6 +1193,7 @@ def main():
     # 1.5. Sidebar: Map Settings section
     st.sidebar.markdown("## Map Settings")
     use_satellite = st.sidebar.checkbox("Satellite View", value=False)
+    show_labels = st.sidebar.checkbox("Show Intersection Labels", value=True)
     st.sidebar.markdown("---")
 
     # 1. Sidebar: Settings section
@@ -352,8 +1220,8 @@ def main():
         else:
             chosen_dataset = selected["datasets"][0]
 
-        DATA_URL = chosen_dataset["url"]
         apples_selection = None
+        trend_selection = None
     elif analysis_mode == "Apples to Apples":
         st.sidebar.markdown("## Apples to Apples Settings")
         comparable_intersections = [i for i in INTERSECTION_REGISTRY if len(i["datasets"]) > 1]
@@ -381,13 +1249,76 @@ def main():
         
         # Use the Baseline dataset (P1) for general app info (city, lat/lon etc) in the header
         chosen_dataset = next(d for d in selected["datasets"] if d["date_label"] == p1_label)
-        DATA_URL = chosen_dataset["url"]
     elif analysis_mode == "Corridor-Wide Regression":
         st.sidebar.markdown("## Regression Settings")
         st.sidebar.info("Corridor-wide regression analysis uses data from all registered intersections.")
         # Dummy selection for header/map consistency
         selected = INTERSECTION_REGISTRY[0]
-        DATA_URL = selected["datasets"][0]["url"]
+        chosen_dataset = selected["datasets"][0]
+        apples_selection = None
+        trend_selection = None
+    elif analysis_mode == "Trend Analysis":
+        st.sidebar.markdown("## Trend Analysis Settings")
+        
+        daily_intersections = [i for i in INTERSECTION_REGISTRY if i.get("daily_data", {}).get("available")]
+        
+        if not daily_intersections:
+            st.sidebar.warning("No intersections with daily data available.")
+            selected = INTERSECTION_REGISTRY[0]
+            chosen_dataset = selected["datasets"][0]
+            trend_selection = None
+        else:
+            selected_trend_intersections = st.sidebar.multiselect(
+                "Intersections",
+                options=[i["label"] for i in daily_intersections],
+                default=[daily_intersections[0]["label"]]
+            )
+            
+            # Get common window options (from first selected)
+            if selected_trend_intersections:
+                first_int = next(i for i in daily_intersections if i["label"] == selected_trend_intersections[0])
+                window_options = list(first_int["daily_data"]["comparison_windows"].keys())
+            else:
+                window_options = []
+                
+            selected_window = st.sidebar.selectbox("Comparison Window", options=window_options)
+            
+            # Comparison Mode info
+            st.sidebar.info("📅 **Comparison Mode: Festival Day**\n\nAligns data by festival-relative day (e.g., Day 1: Wednesday).")
+            
+            selected_years = st.sidebar.selectbox("Year(s)", options=["Both years", "2026", "2025"], index=0)
+            
+            metrics_options = {
+                "Average Delay (seconds)": "Average Delay (s)",
+                "Arrivals On Green (%)": "Arrivals on Green (%)",
+                "Split Failures (%)": "Split Failures (%)",
+                "Total Vehicles": "Vehicle Samples 1"
+            }
+            selected_metric_label = st.sidebar.selectbox("Metric", options=list(metrics_options.keys()))
+            
+            approach_options = ["All Approaches", "Northbound", "Southbound", "Eastbound", "Westbound"]
+            selected_approach = st.sidebar.selectbox("Approach", options=approach_options)
+            
+            trend_selection = {
+                "intersections": selected_trend_intersections,
+                "window": selected_window,
+                "years": selected_years,
+                "metric_label": selected_metric_label,
+                "metric_column": metrics_options[selected_metric_label],
+                "approach": selected_approach
+            }
+            
+            # Pre-load trend data to get file links for the sidebar
+            with st.sidebar:
+                with st.spinner("Preparing file links..."):
+                    trend_results = load_trend_data_preset(INTERSECTION_REGISTRY, trend_selection)
+            
+            if selected_trend_intersections:
+                selected = next(i for i in daily_intersections if i["label"] == selected_trend_intersections[0])
+            else:
+                selected = INTERSECTION_REGISTRY[0]
+            chosen_dataset = selected["datasets"][0]
+            
         apples_selection = None
     elif analysis_mode == "ADT Analysis":
         # ADT Analysis Mode
@@ -405,8 +1336,9 @@ def main():
             selected_name = DEFAULT_INTERSECTION_NAME
             
         selected = next((i for i in INTERSECTION_REGISTRY if i["label"] == selected_name), INTERSECTION_REGISTRY[0])
-        DATA_URL = selected["datasets"][0]["url"]
+        chosen_dataset = selected["datasets"][0]
         apples_selection = None
+        trend_selection = None
 
     # --- Export Helper ---
     def generate_excel_bytes(df_dict):
@@ -417,41 +1349,55 @@ def main():
         return output.getvalue()
 
     # Load data early to use metadata for labels
-    data = load_data(DATA_URL)
-    if data is None:
-        st.stop()
-    df_meta, df_int, df_app, df_mov = data
-
-    # 2. Extract metadata dynamically
-    primary_street = get_meta_value(df_meta, "Primary Street")
-    secondary_street = get_meta_value(df_meta, "Secondary Street")
-    tertiary_street = get_meta_value(df_meta, "Tertiary Street", "N/A")
+    data = get_intersection_data(selected, chosen_dataset)
     
-    city = selected.get("city", "N/A")
-    if city == "N/A":
-        # try "City" first, then fallback to Intersection
-        city = get_meta_value(df_meta, "City", "N/A")
+    # 2. Extract metadata dynamically (with fallbacks if data is missing)
+    if data:
+        df_meta, df_int, df_app, df_mov = data
+        primary_street = get_meta_value(df_meta, "Primary Street")
+        secondary_street = get_meta_value(df_meta, "Secondary Street")
+        tertiary_street = get_meta_value(df_meta, "Tertiary Street", "N/A")
+        
+        city = selected.get("city", "N/A")
         if city == "N/A":
-            city = get_meta_value(df_meta, "Intersection", "N/A")
-    
+            city = get_meta_value(df_meta, "City", "N/A")
+            if city == "N/A":
+                city = get_meta_value(df_meta, "Intersection", "N/A")
+        
+        start_date = get_meta_value(df_meta, "Start Date")
+        end_date = get_meta_value(df_meta, "End Date")
+        date_range = f"{start_date} to {end_date}"
+        Data_Source = get_meta_value(df_meta, "Data Source", "ITERIS CLEARGUIDE")
+    else:
+        # Dummy dataframes to prevent crashes in other modes
+        df_meta = pd.DataFrame(columns=["Key", "Value"])
+        df_int = pd.DataFrame({
+            "Delay Range 1": [0.0],
+            "Arrivals On Green Range 1": [0.0],
+            "Split Failures Range 1": [0.0],
+            "Vehicle Samples 1": [0]
+        })
+        df_app = pd.DataFrame(columns=["Approach", "Delay Range 1", "Arrivals On Green Range 1", "Split Failures Range 1", "Vehicle Samples 1"])
+        df_mov = pd.DataFrame(columns=["Approach", "Movement", "Volume"])
+        
+        primary_street = secondary_street = tertiary_street = "N/A"
+        city = selected.get("city", "N/A")
+        date_range = "N/A"
+        Data_Source = "N/A"
+
     # User requested to replace any variant of "City of Indio, California" 
     # with "City of Indian Wells, California"
     if city.lower().strip() in ["city of indio, california", "city of indio", "city of indio california"]:
         city = "City of Indian Wells, California"
 
-    start_date = get_meta_value(df_meta, "Start Date")
-    end_date = get_meta_value(df_meta, "End Date")
-    date_range = f"{start_date} to {end_date}"
-
     intersection = selected["label"]
     coordinates = f"{selected['lat']}, {selected['lon']}"
-    Data_Source = get_meta_value(df_meta, "Data Source", "ITERIS CLEARGUIDE")
 
     corridor = selected["corridor"]
     if corridor == "N/A":
         corridor = selected["label"]
 
-    if analysis_mode in ["Intersection Analysis", "Corridor-Wide Regression"]:
+    if analysis_mode in ["Intersection Analysis", "Corridor-Wide Regression", "Apples to Apples", "Trend Analysis"]:
         st.sidebar.markdown("## Location Info")
         st.sidebar.markdown(
             f"""
@@ -467,14 +1413,42 @@ def main():
             """
         )
 
+        if analysis_mode == "Trend Analysis" and trend_selection and 'trend_results' in locals():
+            st.sidebar.markdown("### Source Files")
+            # Group by intersection
+            for int_label in trend_selection["intersections"]:
+                int_results = [r for r in trend_results if r.get("Intersection") == int_label]
+                if int_results:
+                    st.sidebar.markdown(f"**{int_label}**")
+                    # Sort results by Date if possible
+                    int_results.sort(key=lambda x: x.get("Date", datetime.date.min))
+                    for r in int_results:
+                        url = r.get("URL", "#")
+                        fname = url.split("/")[-1]
+                        # Show Year and Date in label for clarity
+                        date_str = r.get("Date").strftime("%m/%d") if r.get("Date") else "N/A"
+                        year_str = r.get("Year", "")
+                        st.sidebar.markdown(f"- [{year_str} {date_str}: {fname}]({url})")
+
     # Optional toggles for showing details in the main area
     show_details_in_header = st.sidebar.checkbox("Show metadata in banner", value=False)
+    show_date_labels = True
+    show_data_labels = True
+    show_shading = False
+    if analysis_mode == "Trend Analysis":
+        show_trend_debug = st.sidebar.checkbox("Show Data details", value=True)
+        show_comparison_table = st.sidebar.checkbox("Show Weekday Comparison Data", value=True)
+        st.sidebar.markdown("---")
+        st.sidebar.markdown("### Chart Labels")
+        show_date_labels = st.sidebar.checkbox("Show Date Labels", value=True)
+        show_data_labels = st.sidebar.checkbox("Show Data Labels", value=True)
+        show_shading = st.sidebar.checkbox("Show Phase Shading", value=False)
 
     # 3. Sidebar: Export Data Section
     st.sidebar.markdown("---")
     st.sidebar.markdown("## Export Data")
     
-    if analysis_mode in ["Intersection Analysis", "Corridor-Wide Regression"]:
+    if analysis_mode in ["Intersection Analysis", "Corridor-Wide Regression", "Apples to Apples", "Trend Analysis"]:
         export_df_dict = {
             "Metadata": df_meta,
             "Intersection": df_int,
@@ -529,38 +1503,10 @@ def main():
     margin: 0 0 4px 0;
 }}
 .bbg-header h1 {{
-    margin: 0 0 4px 0;
+    margin: 0 0 12px 0;
     font-size: 26px;
     font-weight: 800;
     letter-spacing: 0.5px;
-}}
-.bbg-header .subtitle {{
-    display: inline-block;
-    margin: 6px 12px 0 0;
-    font-size: 14px;
-    font-weight: 500;
-    letter-spacing: 0.4px;
-    background: rgba(255,255,255,0.12);
-    border: 1px solid rgba(255,255,255,0.25);
-    border-radius: 20px;
-    padding: 4px 14px;
-    opacity: 1;
-}}
-.bbg-header .datasource {{
-    display: inline-block;
-    margin: 6px 0 0 0;
-    font-size: 13px;
-    font-weight: 400;
-    opacity: 0.85;
-}}
-.bbg-header .datasource a {{
-    color: #ffffff;
-    text-decoration: underline;
-    text-underline-offset: 2px;
-}}
-.bbg-header .datasource a:hover {{
-    opacity: 1;
-    color: #ffffff;
 }}
 .bbg-meta {{
     display: grid;
@@ -575,8 +1521,6 @@ def main():
 <div class="bbg-header">
 <p class="company">Advantec Consulting Engineers</p>
 <h1>INTERSECTION PERFORMANCE DASHBOARD</h1>
-<p class="subtitle">📍 {intersection}</p>
-<p class="datasource">Data Source: <a href="{DATA_URL}" target="_blank">{Data_Source}</a></p>
 {f'<div class="bbg-meta">\n<div><strong>Corridor:</strong> <span>{corridor}</span></div>\n<div><strong>City:</strong> <span>{city}</span></div>\n<div><strong>Date Range:</strong> <span>{date_range}</span></div>\n<div><strong>Coordinates:</strong> <span>{coordinates}</span></div>\n</div>' if show_details_in_header else ''}
 </div>"""
 
@@ -614,7 +1558,7 @@ div[data-testid="column"]:nth-child(2) > div {
 
     # Map stays pinned in the right rail
     with right_col:
-        if analysis_mode in ["Intersection Analysis", "Apples to Apples", "Corridor-Wide Regression"]:
+        if analysis_mode in ["Intersection Analysis", "Apples to Apples", "Corridor-Wide Regression", "Trend Analysis"]:
             # Gather all intersections in this corridor for the map sidebar
             target_corridor = corridor
             relevant_intersections = [
@@ -623,15 +1567,30 @@ div[data-testid="column"]:nth-child(2) > div {
             ]
             
             intersections_data = []
-            seen_urls = set()
+            seen_keys = set()
             for item in relevant_intersections:
                 for ds in item.get("datasets", []):
-                    if ds["url"] not in seen_urls:
+                    # Use URL if available, otherwise fallback to a unique identifier for daily aggregation
+                    url = ds.get("url")
+                    start_ds = ds.get("start_date")
+                    end_ds = ds.get("end_date")
+                    
+                    # Create a unique key for this dataset entry to avoid duplicates in the list
+                    if url:
+                        entry_key = url
+                    elif start_ds and end_ds:
+                        entry_key = f"{item['label']}_{start_ds}_{end_ds}"
+                    else:
+                        entry_key = f"{item['label']}_{ds.get('date_label')}"
+                        
+                    if entry_key not in seen_keys:
                         lbl = item["label"]
-                        if ds["date_label"] != "Default":
-                            lbl = f"{lbl} ({ds['date_label']})"
-                        intersections_data.append({"name": lbl, "url": ds["url"]})
-                        seen_urls.add(ds["url"])
+                        if ds.get("date_label") != "Default":
+                            lbl = f"{lbl} ({ds.get('date_label')})"
+                        
+                        # url can be None, render_map handles it by showing name only
+                        intersections_data.append({"name": lbl, "url": url})
+                        seen_keys.add(entry_key)
                         
             if analysis_mode == "Corridor-Wide Regression":
                 corridor_labels = [i["label"] for i in INTERSECTION_REGISTRY]
@@ -655,9 +1614,10 @@ div[data-testid="column"]:nth-child(2) > div {
                 label=intersection,
                 registry=map_registry,
                 use_satellite=use_satellite,
+                show_labels=show_labels,
                 highlight_labels=corridor_labels,
-                study_period=study_period_str,
-                intersections=intersections_data
+                study_period=None if analysis_mode == "Trend Analysis" else study_period_str,
+                intersections=None if analysis_mode == "Trend Analysis" else intersections_data
             )
         elif analysis_mode == "ADT Analysis":
             # ADT Analysis Mode: Dynamic corridor view
@@ -666,15 +1626,18 @@ div[data-testid="column"]:nth-child(2) > div {
             intersections_data = []
             seen_urls = set()
             for item in corridor_entries:
-                if item["url"] not in seen_urls:
-                    intersections_data.append({"name": item["label"], "url": item["url"]})
-                    seen_urls.add(item["url"])
+                url = item.get("url")
+                if url and url not in seen_urls:
+                    intersections_data.append({"name": item["label"], "url": url})
+                    seen_urls.add(url)
 
             # Determine corridor-wide Study Period
             corridor_date_range = "N/A"
             start = None
             end = None
             for entry in corridor_entries:
+                if not entry.get("url"):
+                    continue
                 # Use load_data logic (already in current file)
                 data = load_data(entry["url"])
                 if data:
@@ -717,6 +1680,7 @@ div[data-testid="column"]:nth-child(2) > div {
                 label=selected_corridor,
                 registry=map_registry,
                 use_satellite=use_satellite,
+                show_labels=show_labels,
                 highlight_labels=corridor_labels,
                 study_period=corridor_study_period_str,
                 intersections=intersections_data,
@@ -753,6 +1717,8 @@ div[data-testid="column"]:nth-child(2) > div {
                 # Need to load/compute directional ADT for all intersections
                 all_approach_adt = []
                 for entry in corridor_entries:
+                    if not entry.get("url"):
+                        continue
                     data = load_data(entry["url"])
                     if data:
                         df_app_local = data[2]
@@ -780,6 +1746,8 @@ div[data-testid="column"]:nth-child(2) > div {
             elif table_choice == "Turning Movement Share":
                 all_mov_shares = []
                 for entry in corridor_entries:
+                    if not entry.get("url"):
+                        continue
                     data = load_data(entry["url"])
                     if data:
                         df_mov_local = data[3]
@@ -806,11 +1774,12 @@ div[data-testid="column"]:nth-child(2) > div {
     # All analytics content lives inside the left column
     with left_col:
         # 1. Main Navigation (Tabs equivalent)
-        nav_options = ["Intersection Analysis", "ADT Analysis", "Apples to Apples", "Corridor-Wide Regression"]
+        nav_options = ["Intersection Analysis", "ADT Analysis", "Apples to Apples", "Trend Analysis", "Corridor-Wide Regression"]
         nav_labels = {
             "Intersection Analysis": "Intersection Performance",
             "ADT Analysis": "Average Daily Traffic (ADT)",
             "Apples to Apples": "Apples-to-Apples Comparison",
+            "Trend Analysis": "Trend Analysis",
             "Corridor-Wide Regression": "Regression Analysis"
         }
 
@@ -834,6 +1803,7 @@ div[data-testid="column"]:nth-child(2) > div {
         tab1 = st.container()
         tab2 = st.container()
         tab3 = st.container()
+        tab4 = st.container()
 
         # Helper to format percentages safely (handles 0.78 vs 78)
         def format_percent(val):
@@ -859,6 +1829,9 @@ div[data-testid="column"]:nth-child(2) > div {
 
         with tab1:
             if analysis_mode == "Intersection Analysis":
+                if data is None:
+                    st.warning(f"Performance data for **{intersection}** could not be loaded. Please verify the dataset URL in the registry.")
+                
                 # 1. High-level KPIs (Intersection Sheet)
                 st.subheader("High-Level KPIs")
     
@@ -1497,11 +2470,26 @@ div[data-testid="column"]:nth-child(2) > div {
             if analysis_mode == "Apples to Apples":
                 render_apples_tab(
                     registry=INTERSECTION_REGISTRY,
-                    load_data_func=load_data,
+                    get_intersection_data_func=get_intersection_data,
                     get_meta_value_func=get_meta_value,
                     direction_map=DIRECTION_MAP,
                     direction_colors=DIRECTION_COLORS,
-                    manual_selection=apples_selection
+                    manual_selection=apples_selection,
+                    load_daily_func=load_daily_data_aggregated
+                )
+
+        with tab4:
+            if analysis_mode == "Trend Analysis":
+                render_trend_comparison_section(
+                    registry=INTERSECTION_REGISTRY,
+                    direction_map=DIRECTION_MAP,
+                    direction_colors=DIRECTION_COLORS,
+                    trend_selection=trend_selection,
+                    show_debug=show_trend_debug,
+                    show_comparison_table=show_comparison_table,
+                    show_date_labels=show_date_labels,
+                    show_data_labels=show_data_labels,
+                    show_shading=show_shading
                 )
 
 
