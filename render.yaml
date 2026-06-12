@@ -3,7 +3,7 @@ services:
     name: watchtower-portal
     runtime: python
     buildCommand: pip install -r watchtower/requirements.txt
-    startCommand: gunicorn watchtower.app:app
+    startCommand: cd watchtower && gunicorn app:app --bind 0.0.0.0:$PORT
     envVars:
       - key: SECRET_KEY
         generateValue: true
@@ -22,7 +22,7 @@ services:
     name: brownbag-dashboard
     runtime: python
     buildCommand: pip install -r BrownBagDashboard/requirements.txt
-    startCommand: streamlit run BrownBagDashboard/adt.py --server.port $PORT
+    startCommand: cd BrownBagDashboard && streamlit run adt.py --server.port $PORT
     envVars:
       - key: PYTHON_VERSION
         value: 3.12.3

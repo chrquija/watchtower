@@ -19,7 +19,7 @@ import streamlit as st
 # PAGE CONFIG
 # ────────────────────────────────────────────────────────────
 st.set_page_config(
-    page_title="⚡ EV Pop Dashboard",
+    page_title="⚡ Capoxxo X Dreamcache Dashboard",
     page_icon="🚗",
     layout="centered",  # 'centered' reads better on iPhone than 'wide'
     initial_sidebar_state="collapsed",
