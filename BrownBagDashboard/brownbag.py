@@ -1170,6 +1170,35 @@ def main():
         </style>
     """, unsafe_allow_html=True)
 
+    # Floating Corner Watermarks
+    st.markdown("""
+        <style>
+        .watermark-right {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            z-index: 1000000;
+            opacity: 0.5;
+            transition: opacity 0.3s;
+        }
+        .watermark-right:hover {
+            opacity: 1.0;
+        }
+        .watermark-img-right {
+            height: 40px;
+            width: auto;
+        }
+        @media (max-width: 600px) {
+            .watermark-right {
+                display: none;
+            }
+        }
+        </style>
+        <div class="watermark-right">
+            <img src="https://raw.githubusercontent.com/chrquija/BrownBag_Dashboard/main/Logos/CV%20Sync.png" class="watermark-img-right">
+        </div>
+    """, unsafe_allow_html=True)
+
     # 0. Sidebar: Analysis Mode selector
     if 'analysis_mode' not in st.session_state:
         st.session_state.analysis_mode = "Intersection Analysis"
@@ -1194,6 +1223,7 @@ def main():
     st.sidebar.markdown("## Map Settings")
     use_satellite = st.sidebar.checkbox("Satellite View", value=False)
     show_labels = st.sidebar.checkbox("Show Intersection Labels", value=True)
+    label_size = st.sidebar.slider("Label Font Size", min_value=8, max_value=24, value=11)
     st.sidebar.markdown("---")
 
     # 1. Sidebar: Settings section
@@ -1485,6 +1515,13 @@ def main():
                     else:
                         st.error("Failed to gather corridor data.")
 
+    # 4. Sidebar: Company Logo
+    st.sidebar.markdown("---")
+    st.sidebar.image(
+        "https://raw.githubusercontent.com/chrquija/BrownBag_Dashboard/main/Logos/ACE-logo-Vector.png",
+        use_container_width=True
+    )
+
     # Compact header (title + key subtitle only)
     header_html = f"""<style>
 .bbg-header {{
@@ -1606,18 +1643,27 @@ div[data-testid="column"]:nth-child(2) > div {
             except:
                 study_period_str = date_range
 
+            if analysis_mode == "Trend Analysis":
+                highlight_labels = selected_trend_intersections
+            elif analysis_mode == "Apples to Apples":
+                highlight_labels = [intersection]
+            else:
+                highlight_labels = corridor_labels
+
             render_map(
                 latitude=selected["lat"],
                 longitude=selected["lon"],
                 height=900,  # longer map
-                zoom=None,
+                zoom=15 if analysis_mode == "Apples to Apples" else None,
                 label=intersection,
                 registry=map_registry,
                 use_satellite=use_satellite,
                 show_labels=show_labels,
-                highlight_labels=corridor_labels,
+                highlight_labels=highlight_labels,
                 study_period=None if analysis_mode == "Trend Analysis" else study_period_str,
-                intersections=None if analysis_mode == "Trend Analysis" else intersections_data
+                intersections=None if analysis_mode == "Trend Analysis" else intersections_data,
+                intersections_title="Excel Export Links" if analysis_mode == "Apples to Apples" else "Intersections",
+                label_size=label_size
             )
         elif analysis_mode == "ADT Analysis":
             # ADT Analysis Mode: Dynamic corridor view
@@ -1684,7 +1730,8 @@ div[data-testid="column"]:nth-child(2) > div {
                 highlight_labels=corridor_labels,
                 study_period=corridor_study_period_str,
                 intersections=intersections_data,
-                segments=df_segments
+                segments=df_segments,
+                label_size=label_size
             )
 
             # --- ADT Data Tables in Right Rail ---
